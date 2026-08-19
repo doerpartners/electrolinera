@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "meta": {"descripcion": "Zonas NSE de Morelia (MIC) y San Miguel de Allende (GTO) — semilla curada. Reemplazable por AGEB/INEGI."},
+  "features": [
+    {"type":"Feature","properties":{"name":"Sur alto (Altozano / Tres Marías / Country)","metro":"Morelia","nse":"A/B","ses_index":0.88},
+     "geometry":{"type":"Polygon","coordinates":[[[-101.19,19.61],[-101.12,19.61],[-101.12,19.67],[-101.19,19.67],[-101.19,19.61]]]}},
+    {"type":"Feature","properties":{"name":"Nueva Chapultepec / Camelinas","metro":"Morelia","nse":"C+","ses_index":0.70},
+     "geometry":{"type":"Polygon","coordinates":[[[-101.21,19.67],[-101.15,19.67],[-101.15,19.70],[-101.21,19.70],[-101.21,19.67]]]}},
+    {"type":"Feature","properties":{"name":"Centro histórico","metro":"Morelia","nse":"C","ses_index":0.50},
+     "geometry":{"type":"Polygon","coordinates":[[[-101.205,19.698],[-101.18,19.698],[-101.18,19.715],[-101.205,19.715],[-101.205,19.698]]]}},
+    {"type":"Feature","properties":{"name":"Norte / Oriente (periferia)","metro":"Morelia","nse":"D+","ses_index":0.33},
+     "geometry":{"type":"Polygon","coordinates":[[[-101.22,19.715],[-101.10,19.715],[-101.10,19.78],[-101.22,19.78],[-101.22,19.715]]]}},
+    {"type":"Feature","properties":{"name":"Poniente (Villas del Pedregal)","metro":"Morelia","nse":"D+","ses_index":0.30},
+     "geometry":{"type":"Polygon","coordinates":[[[-101.30,19.66],[-101.23,19.66],[-101.23,19.72],[-101.30,19.72],[-101.30,19.66]]]}},
+
+    {"type":"Feature","properties":{"name":"Centro histórico (expat / patrimonio)","metro":"San Miguel de Allende","nse":"A/B","ses_index":0.85},
+     "geometry":{"type":"Polygon","coordinates":[[[-100.752,20.908],[-100.738,20.908],[-100.738,20.922],[-100.752,20.922],[-100.752,20.908]]]}},
+    {"type":"Feature","properties":{"name":"Fraccionamientos NE (Los Frailes / Balcones / Atascadero)","metro":"San Miguel de Allende","nse":"A/B","ses_index":0.80},
+     "geometry":{"type":"Polygon","coordinates":[[[-100.745,20.915],[-100.715,20.915],[-100.715,20.940],[-100.745,20.940],[-100.745,20.915]]]}},
+    {"type":"Feature","properties":{"name":"Colonias populares (San Rafael / Guadalupe)","metro":"San Miguel de Allende","nse":"C","ses_index":0.48},
+     "geometry":{"type":"Polygon","coordinates":[[[-100.762,20.895],[-100.748,20.895],[-100.748,20.912],[-100.762,20.912],[-100.762,20.895]]]}},
+    {"type":"Feature","properties":{"name":"Sur / salida a Querétaro","metro":"San Miguel de Allende","nse":"D+","ses_index":0.35},
+     "geometry":{"type":"Polygon","coordinates":[[[-100.760,20.875],[-100.730,20.875],[-100.730,20.900],[-100.760,20.900],[-100.760,20.875]]]}}
+  ]
+}

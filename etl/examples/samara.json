@@ -1,0 +1,52 @@
+{
+  "name": "Samara",
+  "lat": 19.3592,
+  "lon": -99.2585,
+  "address": "Santa Fe, CDMX (ubicación aproximada — ajústala)",
+  "site_type": "mixed",
+  "observed_at": "2026-08-13",
+  "observer": "fmondragon",
+  "zones": [
+    {
+      "zone": "Sótano 1 - Corporativo",
+      "section": "corporativo",
+      "level": "Sótano 1",
+      "chargers": [
+        {"count": 5, "brands": ["Siemens", "BYD", "ClipperCreek"], "status": "operational"}
+      ],
+      "vehicles_charging": [
+        {"make": "BYD", "type": "camioneta"}
+      ]
+    },
+    {
+      "zone": "Sótano 1 - Comercial",
+      "section": "comercial",
+      "level": "Sótano 1",
+      "chargers": [
+        {"count": 2, "brands": ["ChargeNow", "ClipperCreek"], "status": "operational"}
+      ],
+      "vehicles_charging": [
+        {"make": "Tesla", "type": "camioneta"},
+        {"make": "Toyota", "type": null}
+      ]
+    },
+    {
+      "zone": "Sótano 1 - Comercial (al fondo, pegado a la pared)",
+      "section": "comercial",
+      "level": "Sótano 1",
+      "chargers": [
+        {"count": 8, "brands": [], "status": "planned"}
+      ],
+      "vehicles_charging": []
+    },
+    {
+      "zone": "Sótano 2 - Comercial",
+      "section": "comercial",
+      "level": "Sótano 2",
+      "chargers": [
+        {"count": 2, "brands": [], "status": "operational"}
+      ],
+      "vehicles_charging": []
+    }
+  ]
+}

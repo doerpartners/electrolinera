@@ -1,0 +1,18 @@
+{
+  "type": "FeatureCollection",
+  "meta": {"descripcion": "Zonas NSE de Mérida, Yucatán (semilla curada). Reemplazable por AGEB/INEGI."},
+  "features": [
+    {"type":"Feature","properties":{"name":"Norte alto (Altabrisa / Temozón / Montebello / Cabo Norte)","metro":"Mérida","nse":"A/B","ses_index":0.90},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.62,21.01],[-89.52,21.01],[-89.52,21.09],[-89.62,21.09],[-89.62,21.01]]]}},
+    {"type":"Feature","properties":{"name":"Norponiente (Montecristo / Colonia México)","metro":"Mérida","nse":"A/B","ses_index":0.85},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.66,20.99],[-89.625,20.99],[-89.625,21.02],[-89.66,21.02],[-89.66,20.99]]]}},
+    {"type":"Feature","properties":{"name":"García Ginerés / Itzimná","metro":"Mérida","nse":"C+","ses_index":0.70},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.645,20.975],[-89.605,20.975],[-89.605,20.998],[-89.645,20.998],[-89.645,20.975]]]}},
+    {"type":"Feature","properties":{"name":"Centro histórico","metro":"Mérida","nse":"C","ses_index":0.48},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.635,20.955],[-89.612,20.955],[-89.612,20.975],[-89.635,20.975],[-89.635,20.955]]]}},
+    {"type":"Feature","properties":{"name":"Ciudad Caucel (poniente)","metro":"Mérida","nse":"C","ses_index":0.52},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.73,20.98],[-89.67,20.98],[-89.67,21.01],[-89.73,21.01],[-89.73,20.98]]]}},
+    {"type":"Feature","properties":{"name":"Sur (San José Tecoh / Sur)","metro":"Mérida","nse":"D+","ses_index":0.32},
+     "geometry":{"type":"Polygon","coordinates":[[[-89.66,20.90],[-89.58,20.90],[-89.58,20.95],[-89.66,20.95],[-89.66,20.90]]]}}
+  ]
+}

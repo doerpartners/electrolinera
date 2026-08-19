@@ -1,0 +1,233 @@
+{
+  "AGS": {
+    "entidad": "Aguascalientes",
+    "bev": 283,
+    "phev": 194,
+    "ev_units_period": 477,
+    "share_national": 0.0163
+  },
+  "BC": {
+    "entidad": "Baja California",
+    "bev": 223,
+    "phev": 268,
+    "ev_units_period": 491,
+    "share_national": 0.0168
+  },
+  "BCS": {
+    "entidad": "Baja California Sur",
+    "bev": 19,
+    "phev": 23,
+    "ev_units_period": 42,
+    "share_national": 0.0014
+  },
+  "CAM": {
+    "entidad": "Campeche",
+    "bev": 31,
+    "phev": 35,
+    "ev_units_period": 66,
+    "share_national": 0.0023
+  },
+  "COA": {
+    "entidad": "Coahuila de Zaragoza",
+    "bev": 231,
+    "phev": 318,
+    "ev_units_period": 549,
+    "share_national": 0.0188
+  },
+  "COL": {
+    "entidad": "Colima",
+    "bev": 80,
+    "phev": 86,
+    "ev_units_period": 166,
+    "share_national": 0.0057
+  },
+  "CHP": {
+    "entidad": "Chiapas",
+    "bev": 60,
+    "phev": 135,
+    "ev_units_period": 195,
+    "share_national": 0.0067
+  },
+  "CHH": {
+    "entidad": "Chihuahua",
+    "bev": 241,
+    "phev": 351,
+    "ev_units_period": 592,
+    "share_national": 0.0203
+  },
+  "CDMX": {
+    "entidad": "Ciudad de México",
+    "bev": 4028,
+    "phev": 3479,
+    "ev_units_period": 7507,
+    "share_national": 0.2568
+  },
+  "DUR": {
+    "entidad": "Durango",
+    "bev": 44,
+    "phev": 36,
+    "ev_units_period": 80,
+    "share_national": 0.0027
+  },
+  "GTO": {
+    "entidad": "Guanajuato",
+    "bev": 496,
+    "phev": 641,
+    "ev_units_period": 1137,
+    "share_national": 0.0389
+  },
+  "GRO": {
+    "entidad": "Guerrero",
+    "bev": 51,
+    "phev": 58,
+    "ev_units_period": 109,
+    "share_national": 0.0037
+  },
+  "HID": {
+    "entidad": "Hidalgo",
+    "bev": 147,
+    "phev": 210,
+    "ev_units_period": 357,
+    "share_national": 0.0122
+  },
+  "JAL": {
+    "entidad": "Jalisco",
+    "bev": 1272,
+    "phev": 1843,
+    "ev_units_period": 3115,
+    "share_national": 0.1066
+  },
+  "MEX": {
+    "entidad": "México",
+    "bev": 1941,
+    "phev": 2148,
+    "ev_units_period": 4089,
+    "share_national": 0.1399
+  },
+  "MIC": {
+    "entidad": "Michoacán de Ocampo",
+    "bev": 176,
+    "phev": 234,
+    "ev_units_period": 410,
+    "share_national": 0.014
+  },
+  "MOR": {
+    "entidad": "Morelos",
+    "bev": 171,
+    "phev": 251,
+    "ev_units_period": 422,
+    "share_national": 0.0144
+  },
+  "NAY": {
+    "entidad": "Nayarit",
+    "bev": 43,
+    "phev": 55,
+    "ev_units_period": 98,
+    "share_national": 0.0034
+  },
+  "NL": {
+    "entidad": "Nuevo León",
+    "bev": 1419,
+    "phev": 1760,
+    "ev_units_period": 3179,
+    "share_national": 0.1088
+  },
+  "OAX": {
+    "entidad": "Oaxaca",
+    "bev": 85,
+    "phev": 131,
+    "ev_units_period": 216,
+    "share_national": 0.0074
+  },
+  "PUE": {
+    "entidad": "Puebla",
+    "bev": 424,
+    "phev": 549,
+    "ev_units_period": 973,
+    "share_national": 0.0333
+  },
+  "QRO": {
+    "entidad": "Querétaro",
+    "bev": 449,
+    "phev": 538,
+    "ev_units_period": 987,
+    "share_national": 0.0338
+  },
+  "ROO": {
+    "entidad": "Quintana Roo",
+    "bev": 138,
+    "phev": 182,
+    "ev_units_period": 320,
+    "share_national": 0.0109
+  },
+  "SLP": {
+    "entidad": "San Luis Potosí",
+    "bev": 179,
+    "phev": 269,
+    "ev_units_period": 448,
+    "share_national": 0.0153
+  },
+  "SIN": {
+    "entidad": "Sinaloa",
+    "bev": 443,
+    "phev": 349,
+    "ev_units_period": 792,
+    "share_national": 0.0271
+  },
+  "SON": {
+    "entidad": "Sonora",
+    "bev": 196,
+    "phev": 237,
+    "ev_units_period": 433,
+    "share_national": 0.0148
+  },
+  "TAB": {
+    "entidad": "Tabasco",
+    "bev": 67,
+    "phev": 136,
+    "ev_units_period": 203,
+    "share_national": 0.0069
+  },
+  "TAM": {
+    "entidad": "Tamaulipas",
+    "bev": 128,
+    "phev": 128,
+    "ev_units_period": 256,
+    "share_national": 0.0088
+  },
+  "TLA": {
+    "entidad": "Tlaxcala",
+    "bev": 39,
+    "phev": 39,
+    "ev_units_period": 78,
+    "share_national": 0.0027
+  },
+  "VER": {
+    "entidad": "Veracruz de Ignacio de la Llave",
+    "bev": 308,
+    "phev": 429,
+    "ev_units_period": 737,
+    "share_national": 0.0252
+  },
+  "YUC": {
+    "entidad": "Yucatán",
+    "bev": 263,
+    "phev": 307,
+    "ev_units_period": 570,
+    "share_national": 0.0195
+  },
+  "ZAC": {
+    "entidad": "Zacatecas",
+    "bev": 41,
+    "phev": 39,
+    "ev_units_period": 80,
+    "share_national": 0.0027
+  },
+  "No especificado": {
+    "entidad": "No especificado",
+    "bev": 52,
+    "phev": 6,
+    "ev_units_period": 58,
+    "share_national": 0.002
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "source_notes": [
+    "ICCT Market Spotlight, Marzo 2026 — Evolución del mercado EV ligero en México 2025.",
+    "AMIA/INEGI, reporte híbridos+PHEV+EV Ene-Abr 2026."
+  ],
+  "avg_price_mxn": {
+    "BEV": 822000,
+    "PHEV": 845000,
+    "ICE": 554000,
+    "HEV": 864000
+  },
+  "market_2025": {
+    "ldv_total_units": 1620000,
+    "ev_share": 0.071,
+    "bev_share": 0.033,
+    "phev_share": 0.038,
+    "ev_growth_yoy": 0.56,
+    "phev_growth_yoy": 0.97,
+    "bev_growth_yoy": 0.26
+  },
+  "brand_ses": {
+    "Tesla": {
+      "segment": "BEV",
+      "ses_tier": 3,
+      "note": "Model 3/Y, premium, 19% de BEV"
+    },
+    "Volvo": {
+      "segment": "BEV",
+      "ses_tier": 3,
+      "note": "EX30, premium europeo"
+    },
+    "BMW": {
+      "segment": "PHEV",
+      "ses_tier": 3,
+      "note": "premium"
+    },
+    "Mercedes Benz": {
+      "segment": "BEV",
+      "ses_tier": 3,
+      "note": "premium"
+    },
+    "BYD": {
+      "segment": "PHEV",
+      "ses_tier": 2,
+      "note": "líder EV: 56% BEV, 74% PHEV; Dolphin/Song/Shark"
+    },
+    "GM": {
+      "segment": "BEV",
+      "ses_tier": 2,
+      "note": "Spark EV, producción MX"
+    },
+    "Ford": {
+      "segment": "BEV",
+      "ses_tier": 2
+    },
+    "JAC": {
+      "segment": "BEV",
+      "ses_tier": 1,
+      "note": "entrada, producción MX"
+    },
+    "Chevrolet": {
+      "segment": "BEV",
+      "ses_tier": 2
+    }
+  },
+  "bev_brand_share_2025": {
+    "BYD": 0.56,
+    "Tesla": 0.19,
+    "JAC": 0.02,
+    "Volvo": 0.01
+  },
+  "home_charging_propensity": {
+    "1": 0.25,
+    "2": 0.55,
+    "3": 0.8
+  },
+  "amia_state_share_2026": {
+    "CDMX": 0.242,
+    "MEX": 0.132,
+    "NL": 0.105,
+    "JAL": 0.085,
+    "GTO": 0.04,
+    "PUE": 0.034,
+    "QRO": 0.03,
+    "VER": 0.029,
+    "YUC": 0.025,
+    "COA": 0.024
+  }
+}

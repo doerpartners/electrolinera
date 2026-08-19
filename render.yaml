@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ev-siting-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py

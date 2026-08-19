@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EV Siting · Sistema de ubicación de cargadores</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <h1>⚡ EV Siting <span>MX</span></h1>
+      <p class="sub">Sistema de sugerencia de ubicación de cargadores · demo</p>
+    </header>
+
+    <nav id="tabs">
+      <button data-tab="explorar" class="active">Explorar</button>
+      <button data-tab="candidatos">Candidatos</button>
+      <button data-tab="insights">Insights</button>
+      <button data-tab="agregar">Agregar</button>
+      <button data-tab="ajustes">Ajustes</button>
+      <button data-tab="ayuda">Ayuda</button>
+    </nav>
+
+    <div class="controls" id="mapControls">
+      <div class="row">
+        <label>Metrópoli
+          <select id="metro">
+            <option value="Monterrey">Monterrey</option>
+            <option value="Guadalajara">Guadalajara</option>
+            <option value="CDMX">CDMX</option>
+            <option value="Mérida">Mérida</option>
+            <option value="Morelia">Morelia</option>
+            <option value="San Miguel de Allende">San Miguel de Allende</option>
+          </select>
+        </label>
+        <label>Radio (km): <span id="radiusVal">5</span>
+          <input type="range" id="radius" min="1" max="10" step="0.5" value="5">
+        </label>
+      </div>
+      <label>Código postal (opcional, tarifa eléctrica)
+        <input id="cp" placeholder="ej. 03020" inputmode="numeric">
+      </label>
+      <div class="btns">
+        <button id="btnChargers" class="ghost">Cargadores: <b id="chToggle">ON</b></button>
+        <button id="btnNse" class="ghost">Capa NSE: <b id="nseToggle">OFF</b></button>
+      </div>
+    </div>
+
+    <div class="tabpanel active" id="tab-explorar">
+      <div class="coordbox">
+        <input id="coordInput" placeholder="lat, lon  (ej. 19.3958, -99.1553)" inputmode="text">
+        <button id="coordGo" class="primary">Evaluar</button>
+      </div>
+      <p class="hint">💡 Pega coordenadas arriba, o haz clic en el mapa para evaluar <b>“¿aquí es buena ubicación?”</b></p>
+      <div id="analysis"><div class="empty">Sin punto seleccionado.<br>Haz clic en el mapa.</div></div>
+    </div>
+
+    <div class="tabpanel" id="tab-candidatos">
+      <button id="btnCand" class="primary block">Generar candidatos para la metrópoli</button>
+      <div id="candlist"><div class="empty">Genera candidatos para ver sugerencias.</div></div>
+    </div>
+
+    <div class="tabpanel" id="tab-insights">
+      <div id="insights"><div class="empty">Cargando insights…</div></div>
+    </div>
+
+    <div class="tabpanel" id="tab-agregar">
+      <div id="agregar"></div>
+    </div>
+
+    <div class="tabpanel" id="tab-ajustes">
+      <div id="ajustes"></div>
+    </div>
+
+    <div class="tabpanel" id="tab-ayuda">
+      <div id="ayuda"></div>
+    </div>
+
+    <footer id="metaFoot"></footer>
+  </aside>
+
+  <main id="mapwrap"><div id="map"></div></main>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/app.js"></script>
+</body>
+</html>

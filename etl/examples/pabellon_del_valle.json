@@ -1,0 +1,17 @@
+{
+  "name": "Pabellón del Valle",
+  "lat": 19.3770,
+  "lon": -99.1660,
+  "address": "Av. Universidad, Del Valle, CDMX (aprox — ajústala)",
+  "site_type": "mall",
+  "observed_at": "2026-08-13",
+  "observer": "fmondragon",
+  "ev_observed": 20,
+  "zones": [
+    {
+      "zone": "Estacionamiento general",
+      "section": "comercial",
+      "chargers": []
+    }
+  ]
+}

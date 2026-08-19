@@ -1,0 +1,4 @@
+# El servidor en runtime usa solo la librería estándar de Python (sin dependencias).
+# openpyxl solo se necesita para reconstruir datos con etl/build_dataset.py,
+# que NO corre en la nube (los JSON ya están en data/processed/).
+openpyxl>=3.1

@@ -1,0 +1,158 @@
+[
+  {
+    "id": "samara-2026-08-13",
+    "name": "Samara",
+    "lat": 19.3592,
+    "lon": -99.2585,
+    "address": "Santa Fe, CDMX (ubicación aproximada — ajústala)",
+    "site_type": "mixed",
+    "observed_at": "2026-08-13",
+    "observer": "fmondragon",
+    "source": "field_survey",
+    "zones": [
+      {
+        "zone": "Sótano 1 - Corporativo",
+        "section": "corporativo",
+        "level": "Sótano 1",
+        "chargers": [
+          {
+            "count": 5,
+            "brands": [
+              "Siemens",
+              "BYD",
+              "ClipperCreek"
+            ],
+            "status": "operational",
+            "connector": null,
+            "kw": null
+          }
+        ],
+        "vehicles_charging": [
+          {
+            "make": "BYD",
+            "type": "camioneta"
+          }
+        ]
+      },
+      {
+        "zone": "Sótano 1 - Comercial",
+        "section": "comercial",
+        "level": "Sótano 1",
+        "chargers": [
+          {
+            "count": 2,
+            "brands": [
+              "ChargeNow",
+              "ClipperCreek"
+            ],
+            "status": "operational",
+            "connector": null,
+            "kw": null
+          }
+        ],
+        "vehicles_charging": [
+          {
+            "make": "Tesla",
+            "type": "camioneta"
+          },
+          {
+            "make": "Toyota",
+            "type": null
+          }
+        ]
+      },
+      {
+        "zone": "Sótano 1 - Comercial (al fondo, pegado a la pared)",
+        "section": "comercial",
+        "level": "Sótano 1",
+        "chargers": [
+          {
+            "count": 8,
+            "brands": [],
+            "status": "planned",
+            "connector": null,
+            "kw": null
+          }
+        ],
+        "vehicles_charging": []
+      },
+      {
+        "zone": "Sótano 2 - Comercial",
+        "section": "comercial",
+        "level": "Sótano 2",
+        "chargers": [
+          {
+            "count": 2,
+            "brands": [],
+            "status": "operational",
+            "connector": null,
+            "kw": null
+          }
+        ],
+        "vehicles_charging": []
+      }
+    ]
+  },
+  {
+    "id": "parque-delta-2026-08-13",
+    "name": "Parque Delta",
+    "lat": 19.3958,
+    "lon": -99.1553,
+    "address": "Av. Cuauhtémoc 462, Narvarte, CDMX (aprox — ajústala)",
+    "site_type": "mall",
+    "parking_spaces": 5000,
+    "ev_observed": null,
+    "observed_at": "2026-08-13",
+    "observer": "fmondragon",
+    "source": "field_survey",
+    "zones": [
+      {
+        "zone": "Edificio principal",
+        "section": "comercial",
+        "level": null,
+        "parking_spaces": 3020,
+        "chargers": [],
+        "vehicles_charging": []
+      },
+      {
+        "zone": "Anexo PGJ",
+        "section": "comercial",
+        "level": null,
+        "parking_spaces": 1980,
+        "chargers": [
+          {
+            "count": 2,
+            "brands": [],
+            "status": "out_of_service",
+            "connector": null,
+            "kw": null
+          }
+        ],
+        "vehicles_charging": []
+      }
+    ]
+  },
+  {
+    "id": "pabellon-del-valle-2026-08-13",
+    "name": "Pabellón del Valle",
+    "lat": 19.377,
+    "lon": -99.166,
+    "address": "Av. Universidad, Del Valle, CDMX (aprox — ajústala)",
+    "site_type": "mall",
+    "parking_spaces": null,
+    "ev_observed": 20,
+    "observed_at": "2026-08-13",
+    "observer": "fmondragon",
+    "source": "field_survey",
+    "zones": [
+      {
+        "zone": "Estacionamiento general",
+        "section": "comercial",
+        "level": null,
+        "parking_spaces": null,
+        "chargers": [],
+        "vehicles_charging": []
+      }
+    ]
+  }
+]

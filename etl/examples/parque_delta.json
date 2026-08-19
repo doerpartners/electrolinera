@@ -1,0 +1,26 @@
+{
+  "name": "Parque Delta",
+  "lat": 19.3958,
+  "lon": -99.1553,
+  "address": "Av. Cuauhtémoc 462, Narvarte, CDMX (aprox — ajústala)",
+  "site_type": "mall",
+  "observed_at": "2026-08-13",
+  "observer": "fmondragon",
+  "parking_spaces": 5000,
+  "zones": [
+    {
+      "zone": "Edificio principal",
+      "section": "comercial",
+      "parking_spaces": 3020,
+      "chargers": []
+    },
+    {
+      "zone": "Anexo PGJ",
+      "section": "comercial",
+      "parking_spaces": 1980,
+      "chargers": [
+        {"count": 2, "brands": [], "status": "out_of_service"}
+      ]
+    }
+  ]
+}
