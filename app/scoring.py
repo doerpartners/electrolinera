@@ -15,6 +15,7 @@ from .geo import haversine_km, SpatialIndex
 from .nse import NSELayer
 from .observations import ObservationStore, summarize as obs_summarize
 from . import business
+from . import electricity
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROC = os.path.join(os.path.dirname(HERE), "data", "processed")
@@ -76,7 +77,7 @@ class Engine:
             "current": {"price": bc["price_per_kwh_user"], "service": current_service_pct},
             "site": {"score": a["score"], "verdict": a["verdict"],
                      "metro": a["query"]["metro"],
-                     "electricity": a["business_case"]["local_factors"]["electricity_peak_usd_kwh"]},
+                     "electricity": a["business_case"]["local_factors"]["electricity_punta_usd_kwh"]},
         }
 
     def obs_in_radius(self, lat, lon, r):
@@ -575,17 +576,24 @@ class Engine:
             f"para proyectar la curva de utilización a 9 años. {anchor_desc}. El {nse_txt} es relevante porque "
             f"los autos eléctricos en México son de gama alta (BEV ~MX${prices['BEV']:,} vs. combustión "
             f"~MX${prices['ICE']:,}), correlacionados con NSE alto. La oferta pública de carga es de {npub} "
-            f"cargadores en el radio, equivalente a {gap_txt}.{tesla_txt} Para el caso de negocio se asume una "
-            f"inversión de ${biz['capex_total']:,} USD en 1 set de 6 cargadores, electricidad a "
-            f"{lf['electricity_peak_usd_kwh']} USD/kWh en punta y {lf['electricity_offpeak_usd_kwh']} USD/kWh "
-            f"en valle, una tasa de descuento del {round(biz['discount_rate_pct'] * 100)}% para el NPV, "
-            f"inflación anual del {round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
-            f"{round(bc['residual_value_pct'] * 100)}% del CapEx al año 9 — todos supuestos genéricos a nivel "
+            f"cargadores en el radio, equivalente a {gap_txt}.{tesla_txt} La tarifa eléctrica usada es la "
+            f"real de CFE para la división \"{lf['electricity_division']}\" ({lf['electricity_confidence']}"
+            f"{', fuente ' + lf['electricity_source'] if lf['electricity_source'] else ''}"
+            f"{', ' + lf['electricity_as_of'] if lf['electricity_as_of'] else ''}): "
+            f"{lf['electricity_punta_usd_kwh']} USD/kWh en punta, {lf['electricity_intermedia_usd_kwh']} en "
+            f"intermedia y {lf['electricity_base_usd_kwh']} en base, más un cargo por demanda de "
+            f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes (capacidad contratada de 360kW) — "
+            f"este cargo por demanda suele ser el componente más grande del costo eléctrico de un set de "
+            f"6 cargadores, no solo el consumo por kWh. Para el resto del caso de negocio se asume una "
+            f"inversión de ${biz['capex_total']:,} USD, una tasa de descuento del "
+            f"{round(biz['discount_rate_pct'] * 100)}% para el NPV, inflación anual del "
+            f"{round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
+            f"{round(bc['residual_value_pct'] * 100)}% del CapEx al año 9 — supuestos genéricos a nivel "
             f"nacional, no calibrados por sitio. Quedan fuera del modelo, y son oportunidades de mejora con "
             f"datos reales del sitio: el costo real de mano de obra local (hoy implícito dentro del 10% de "
             f"mantenimiento), la renta real por metro cuadrado (hoy se usa un reparto fijo de utilidad "
             f"16%/84% en vez de una renta por m²), y la posibilidad de generación solar en sitio (no modelada), "
-            f"que podría reducir el costo de electricidad y mejorar el payback."
+            f"que podría reducir el cargo por demanda y mejorar el payback."
         )
 
 

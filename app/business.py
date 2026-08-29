@@ -12,16 +12,14 @@ Cosas de la fuente que NO se portaron (documentadas para que no parezcan un olvi
    de energía/ingreso/costo ahí — solo la curva de "utilización esperada" se usa aquí.
  - El ROI acumulado de la fuente restaba una celda de reinversión en el año 6 que
    nunca se llenó — no se modela ninguna reinversión a mitad de vida.
- - El precio al usuario es el mismo en horario punta y valle en la fuente (a pesar de
-   una etiqueta que sugiere +25% en punta que no se refleja en el valor).
+ - El precio al usuario es el mismo en los 3 periodos horarios en la fuente (a pesar
+   de una etiqueta que sugiere +25% en punta que no se refleja en el valor).
  - Las comisiones de venta (VIP/Vendedor/Arquitecto) no estaban conectadas a la hoja
    de ROI en la fuente — aquí se devuelven aparte, informativas, sin restar del
    retorno del inversionista.
 
 Extensiones agregadas sobre la fuente (no vienen del Excel):
- - Inflación anual nominal, aplicada por igual a precio y costo de electricidad.
- - Costo de electricidad en valle expresado como % más barato que punta (antes eran
-   dos montos independientes) — refleja que la energía nocturna es más barata.
+ - Inflación anual nominal, aplicada por igual a precio y costos de electricidad.
  - NPV a la tasa de descuento configurada, además del payback/ROI simples ya existentes.
  - Valor residual del hardware al año 9 (% del CapEx), que se suma al flujo del
    inversionista solo en ese último año.
@@ -30,8 +28,13 @@ Extensiones agregadas sobre la fuente (no vienen del Excel):
    en `utilization_ceiling_pct` — liga el ritmo de adopción real de EV/PHEV (parámetro
    compartido con VEHICLE_MODEL en scoring.py) a la proyección de ingresos del ROI, en
    vez de una curva arbitraria y fija.
+ - El costo de electricidad ya NO es un supuesto plano: viene de app/electricity.py,
+   que resuelve la tarifa real de CFE (GDMTH, 3 periodos horarios + cargo por demanda
+   + cargo fijo + DAP municipal) según el código postal del sitio. Incluye el cargo
+   por demanda ($/kW de capacidad contratada, ~360kW) — un costo real de GDMTH que el
+   modelo anterior no consideraba y que puede ser el componente más grande del OpEx.
 """
-from . import config
+from . import config, electricity
 
 
 def _commissions(capex_total, sites):
@@ -45,15 +48,14 @@ def _commissions(capex_total, sites):
 
 
 def compute(sites, ctx):
-    """ctx: {metro, ses_index, util (0..1), cp(optional)} — metro/ses_index/cp ya no
-    afectan el cálculo (el modelo por sitio es nacional/plano); se mantienen en la
-    firma por compatibilidad con los llamadores existentes."""
+    """ctx: {metro, ses_index, util (0..1), cp(optional), electricity(optional, ya resuelto)}."""
     bc = config.BUSINESS_CASE
     sites = max(1, int(sites))
 
     capex_total = sites * bc["site_capex_usd"]
     capacity = bc["site_capacity_kw"]
-    peak_h, offpeak_h = bc["peak_hours_per_day"], bc["offpeak_hours_per_day"]
+    ph = config.ELECTRICITY["period_hours"]
+    punta_h, intermedia_h, base_h = ph["punta"], ph["intermedia"], ph["base"]
     # overrides para análisis de sensibilidad (precio al usuario / costo de servicio agregado)
     price0 = ctx.get("price_per_kwh", bc["price_per_kwh_user"])
     service_pct_override = ctx.get("service_opex_pct")
@@ -61,9 +63,14 @@ def compute(sites, ctx):
     maint_pct = bc["maintenance_pct"]
     platform_pct = bc["platform_pct"]
 
+    elec = ctx.get("electricity") or electricity.resolve(ctx.get("cp"))
     loss = 1 + bc["electrical_loss_ratio"]
-    elec_peak0 = bc["electricity_cost_peak_per_kwh"] * loss
-    elec_offpeak0 = elec_peak0 * (1 - bc["electricity_night_discount_pct"])
+    punta0 = elec["punta_usd_kwh"] * loss
+    intermedia0 = elec["intermedia_usd_kwh"] * loss
+    base0 = elec["base_usd_kwh"] * loss
+    demand0 = elec["demand_usd_kw_month"] * capacity * 12 * sites  # cargo por capacidad contratada
+    fixed0 = elec["fixed_usd_month"] * 12 * sites
+
     landlord_share = bc["landlord_profit_share"]
     inflation = bc["inflation_pct"]
     discount_rate = bc["discount_rate_pct"]
@@ -83,21 +90,33 @@ def compute(sites, ctx):
     for i, util_year in enumerate(utilization_by_year):
         infl_mult = (1 + inflation) ** i
         price = price0 * infl_mult
-        elec_peak = elec_peak0 * infl_mult
-        elec_offpeak = elec_offpeak0 * infl_mult
+        punta, intermedia, base = punta0 * infl_mult, intermedia0 * infl_mult, base0 * infl_mult
+        demand_charge, fixed_charge = demand0 * infl_mult, fixed0 * infl_mult
 
         utilization = util_year * util_eff
-        kw_peak = capacity * utilization * peak_h
-        kw_offpeak = capacity * utilization * offpeak_h
-        revenue = (kw_peak * price + kw_offpeak * price) * 365 * sites
+        kw_punta = capacity * utilization * punta_h
+        kw_intermedia = capacity * utilization * intermedia_h
+        kw_base = capacity * utilization * base_h
+        kw_total = kw_punta + kw_intermedia + kw_base
+        revenue = kw_total * price * 365 * sites
 
-        electricity_cost = (kw_peak * elec_peak + kw_offpeak * elec_offpeak) * 365 * sites
+        energy_cost = (kw_punta * punta + kw_intermedia * intermedia + kw_base * base) * 365 * sites
+        dap_cost = electricity.dap_annual_usd(elec["dap"], energy_cost)
+
         if service_pct_override is not None:
-            opex_breakdown = {"electricidad": round(electricity_cost),
-                               "servicio": round(revenue * service_pct_override)}
+            opex_breakdown = {
+                "electricidad_energia": round(energy_cost),
+                "electricidad_demanda": round(demand_charge),
+                "electricidad_cargo_fijo": round(fixed_charge),
+                "electricidad_dap": round(dap_cost),
+                "servicio": round(revenue * service_pct_override),
+            }
         else:
             opex_breakdown = {
-                "electricidad": round(electricity_cost),
+                "electricidad_energia": round(energy_cost),
+                "electricidad_demanda": round(demand_charge),
+                "electricidad_cargo_fijo": round(fixed_charge),
+                "electricidad_dap": round(dap_cost),
                 "comision_bancaria": round(revenue * bank_pct),
                 "mantenimiento": round(revenue * maint_pct),
                 "plataforma_software": round(revenue * platform_pct),
@@ -141,7 +160,7 @@ def compute(sites, ctx):
     roi = round(year9["cumulative_investor_profit"] / capex_total, 2) if capex_total else None
     npv = round(sum(cf / (1 + discount_rate) ** y for y, cf in enumerate(investor_cashflows)))
 
-    avg_electricity_per_kwh = (elec_peak0 * peak_h + elec_offpeak0 * offpeak_h) / (peak_h + offpeak_h)
+    avg_electricity_per_kwh = (punta0 * punta_h + intermedia0 * intermedia_h + base0 * base_h) / 24
     service_pct_display = service_pct_override if service_pct_override is not None else (bank_pct + maint_pct + platform_pct)
     service_cost_per_kwh = round(price0 * service_pct_display, 3)
     contribution_margin_per_kwh = round(price0 - avg_electricity_per_kwh - service_cost_per_kwh, 3)
@@ -170,8 +189,14 @@ def compute(sites, ctx):
         "service_cost_per_kwh": service_cost_per_kwh,
         "commissions": _commissions(capex_total, sites),
         "local_factors": {
-            "electricity_peak_usd_kwh": round(elec_peak0, 3),
-            "electricity_offpeak_usd_kwh": round(elec_offpeak0, 3),
+            "electricity_punta_usd_kwh": round(punta0, 4),
+            "electricity_intermedia_usd_kwh": round(intermedia0, 4),
+            "electricity_base_usd_kwh": round(base0, 4),
+            "electricity_demand_usd_kw_month": elec["demand_usd_kw_month"],
+            "electricity_division": elec["division"],
+            "electricity_confidence": elec["confidence"],
+            "electricity_source": elec["source"],
+            "electricity_as_of": elec["as_of"],
             "price_per_kwh_user": price0,
             "utilization": round(util_eff, 2),
             "inflation_pct": inflation,

@@ -80,7 +80,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, engine().demand)
             if path == "/api/business-config":
                 return self._send(200, {**config.BUSINESS_CASE,
-                                        "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"]})
+                                        "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"],
+                                        "mxn_usd_fx_rate": config.ELECTRICITY["mxn_usd_fx_rate"],
+                                        "period_hours": config.ELECTRICITY["period_hours"]})
             if path == "/api/observations":
                 e = engine()
                 return self._send(200, {"count": len(e.obs.items),
@@ -142,8 +144,7 @@ class Handler(BaseHTTPRequestHandler):
         bc = config.BUSINESS_CASE
         if "site_capex_usd" in data and data["site_capex_usd"] is not None:
             bc["site_capex_usd"] = max(0, float(data["site_capex_usd"]))
-        for k in ("price_per_kwh_user", "electricity_cost_peak_per_kwh",
-                  "electricity_night_discount_pct", "maintenance_pct", "platform_pct",
+        for k in ("price_per_kwh_user", "maintenance_pct", "platform_pct",
                   "bank_commission_pct", "landlord_profit_share", "inflation_pct",
                   "discount_rate_pct", "residual_value_pct", "utilization_year1_pct",
                   "utilization_ceiling_pct"):
@@ -151,7 +152,15 @@ class Handler(BaseHTTPRequestHandler):
                 bc[k] = float(data[k])
         if "ev_fleet_growth_pct_yoy" in data and data["ev_fleet_growth_pct_yoy"] is not None:
             config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"] = float(data["ev_fleet_growth_pct_yoy"])
-        return self._send(200, {"business_case": bc, "vehicle_model": config.VEHICLE_MODEL})
+        if "mxn_usd_fx_rate" in data and data["mxn_usd_fx_rate"] is not None:
+            config.ELECTRICITY["mxn_usd_fx_rate"] = max(0.01, float(data["mxn_usd_fx_rate"]))
+        ph = data.get("period_hours")
+        if ph:
+            for k in ("punta", "intermedia", "base"):
+                if k in ph and ph[k] is not None:
+                    config.ELECTRICITY["period_hours"][k] = float(ph[k])
+        return self._send(200, {"business_case": bc, "vehicle_model": config.VEHICLE_MODEL,
+                                "electricity": config.ELECTRICITY})
 
     def _handle_weights(self, data):
         """Actualiza pesos del scoring en vivo. Se normalizan a suma 1.0."""

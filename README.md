@@ -27,6 +27,14 @@ Reconstruir datos (cuando lleguen archivos nuevos a `~/Downloads`):
 python3 etl/build_dataset.py
 ```
 
+Catálogo de códigos postales (CP → municipio, para tarifas eléctricas por ubicación — solo hace
+falta rehacerlo si SEPOMEX actualiza el catálogo; el actual ya está en `data/processed/`):
+
+```bash
+curl -o ~/Downloads/cpdescarga.csv https://www.correosdemexico.gob.mx/datosabiertos/cp/cpdescarga.csv
+python3 etl/build_cp_catalog.py
+```
+
 ---
 
 ## 1.b La interfaz (5 pestañas)
@@ -128,7 +136,18 @@ asumida de un cargador EV). No se proponen sets adicionales por ubicación.
 
 - **CapEx**: $250,000 USD por set de 6 cargadores (transformador + cargadores + cable + instalación).
 - **Utilización esperada**: parte de `utilization_year1_pct` (23%) y crece cada año al ritmo de `VEHICLE_MODEL.ev_fleet_growth_pct_yoy` (% de crecimiento anual del parque EV+PHEV, ~9.7% por defecto) hasta un tope de `utilization_ceiling_pct` (40%) — liga la demanda real proyectada al ROI en vez de una curva fija. Modulada además por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
-- **Energía y costo de electricidad**: split horario **punta/valle** (12.5h/11.5h). El costo de valle/noche se deriva del de punta/día vía `electricity_night_discount_pct` (% más barata la electricidad de noche), con 10% de pérdida eléctrica incluida en ambos.
+- **Energía y costo de electricidad — tarifa real de CFE por ubicación**: `app/electricity.py` resuelve
+  código postal → municipio (catálogo SEPOMEX, `data/processed/cp_municipio.json`, ~32k CPs reales) →
+  división tarifaria de CFE → tarifa **GDMTH** (Gran Demanda Media Tensión Horaria): 3 periodos
+  horarios reales (**punta/intermedia/base**, horas en `config.ELECTRICITY.period_hours` — aproximadas,
+  sin confirmar con el anexo metodológico CRE/CNE) + **cargo por demanda** ($/kW de capacidad
+  contratada, 360kW — a menudo el componente más grande del OpEx eléctrico, ausente en el modelo
+  anterior) + cargo fijo mensual + **DAP** municipal (alumbrado público, fórmula por municipio en
+  `config.ELECTRICITY.municipio_dap`). Cifras reales y fechadas (fuente: DOF) para 6 municipios
+  (Monterrey, Guadalajara, CDMX, Mérida, Morelia, San Miguel de Allende); cualquier otro CP cae a un
+  promedio nacional explícitamente marcado como `"confidence": "promedio nacional (sin confirmar por
+  ubicación)"` — ver `data/electricity_tariffs_reference.xlsx` para la tabla completa con fuentes.
+  MXN convertido a USD vía `mxn_usd_fx_rate` (aproximado, ajustable).
 - **Inflación anual** (`inflation_pct`): escala precio al usuario y costo de electricidad por igual cada año (nominal).
 - **OpEx**: electricidad + comisión bancaria/pasarela de pago (`bank_commission_pct`) + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
 - **Reparto de utilidad**: 16% dueño del local / 84% inversionista.
@@ -214,7 +233,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/observations` | Lista observaciones de campo. |
 | POST | `/api/observations` | Agrega una observación (valida; 422 si inválida). |
 | GET | `/api/business-config` | Supuestos del business case. |
-| POST | `/api/business` | Ajusta CapEx por sitio / precio / tarifas de electricidad / reparto en vivo. |
+| POST | `/api/business` | Ajusta CapEx por sitio / precio / tipo de cambio / horas de periodo / reparto / NPV / inflación en vivo. |
 | GET | `/api/sensitivity?lat=&lon=&radius=&cp=` | Matriz de equilibrio (meses) precio × costo de servicio. |
 
 Ejemplo:
@@ -252,18 +271,21 @@ Cada mejora es un cambio de datos/config, no de lógica.
 ev-siting-demo/
 ├── run.py                 # entrypoint
 ├── etl/build_dataset.py   # normaliza fuentes → data/processed/*.json
+├── etl/build_cp_catalog.py # catálogo SEPOMEX → data/processed/cp_municipio.json
 ├── etl/load_nse.py        # ingiere GeoJSON NSE oficial → data/nse_polygons.geojson
 ├── etl/add_observation.py # valida y guarda un levantamiento de campo (JSON)
 ├── etl/examples/samara.json   # observación de ejemplo
 ├── app/observations.py    # esquema + validación + expansión de levantamientos
 ├── app/
-│   ├── config.py          # pesos, umbrales, metros, malls semilla, modelo vehicular
+│   ├── config.py          # pesos, umbrales, metros, malls semilla, modelo vehicular, ELECTRICITY
 │   ├── geo.py             # haversine + índice espacial
 │   ├── scoring.py         # motor: analyze_point() y generate_candidates()
-│   ├── business.py        # business case: CapEx/OpEx/ingresos/payback/ROI
+│   ├── business.py        # business case: CapEx/OpEx/ingresos/payback/ROI/NPV
+│   ├── electricity.py     # tarifa eléctrica real por ubicación (CFE GDMTH + DAP)
 │   ├── observations.py    # levantamientos de campo (esquema + validación)
 │   └── server.py          # API JSON + estáticos (stdlib, sin deps)
 ├── web/                   # frontend: mapa Leaflet + UI de 5 pestañas
 ├── data/nse_polygons.geojson  # zonas NSE (semilla; reemplazable por oficial)
-└── data/processed/        # JSON generado por el ETL
+├── data/electricity_tariffs_reference.xlsx  # tablas de ELECTRICITY con fuentes, para revisión humana
+└── data/processed/        # JSON generado por el ETL (incl. cp_municipio.json)
 ```

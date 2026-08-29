@@ -82,12 +82,8 @@ BUSINESS_CASE = {
     "utilization_year1_pct": 0.23,
     "utilization_ceiling_pct": 0.40,
     "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)
-    "peak_hours_per_day": 12.5,
-    "offpeak_hours_per_day": 11.5,
-    "price_per_kwh_user": 0.46,               # mismo precio en horario punta y valle (así viene calculado en la fuente)
-    "electricity_cost_peak_per_kwh": 0.17,    # base (horario punta/día)
-    "electricity_night_discount_pct": 0.1176, # % más barata la electricidad en valle/noche vs punta (0.15 vs 0.17 original)
-    "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada a ambos costos
+    "price_per_kwh_user": 0.46,               # mismo precio en los 3 periodos (así viene calculado en la fuente)
+    "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada al costo de energía
     "bank_commission_pct": 0.0,                # comisión bancaria/pasarela de pago, % de facturación (sin costo en la fuente)
     "maintenance_pct": 0.10,                   # % de facturación
     "platform_pct": 0.13,                      # % de facturación
@@ -103,6 +99,85 @@ BUSINESS_CASE = {
         "arquitecto_flat_usd": 2_500,
         "recurring_note": ("Comisión recurrente mensual (0.5% VIP + 0.5% vendedor) solo aplica a "
                             "clientes con cartera de 100+ sitios; no se calcula por sitio individual."),
+    },
+}
+
+# --- Tarifa eléctrica real por ubicación (CFE, tarifa GDMTH — Gran Demanda Media Tensión ---
+# Horaria) para consumo comercial/industrial. Reemplaza el supuesto plano anterior.
+# CP -> municipio (data/processed/cp_municipio.json, catálogo SEPOMEX) -> división CFE -> tarifa.
+# Fuente de las 6 divisiones abajo: DOF, "Tarifas finales del Suministro Básico" (boletines
+# 2025-11-28 y 2026-07-31). Cifras en MXN; se convierten a USD con mxn_usd_fx_rate en electricity.py.
+# El catálogo SEPOMEX registra el municipio de CDMX como la alcaldía (no "Ciudad de México"),
+# de ahí las 16 claves explícitas abajo — todas caen en la misma división/DAP (aproximación
+# documentada; CDMX tiene 3 sub-divisiones reales, ver nota más abajo).
+_CDMX_ALCALDIAS = ["Álvaro Obregón", "Azcapotzalco", "Benito Juárez", "Coyoacán",
+                   "Cuajimalpa de Morelos", "Cuauhtémoc", "Gustavo A. Madero", "Iztacalco",
+                   "Iztapalapa", "La Magdalena Contreras", "Miguel Hidalgo", "Milpa Alta",
+                   "Tláhuac", "Tlalpan", "Venustiano Carranza", "Xochimilco"]
+_CDMX_KEYS = [f"{a}|Ciudad de México" for a in _CDMX_ALCALDIAS]
+
+ELECTRICITY = {
+    "mxn_usd_fx_rate": 18.5,  # aproximado — actualizar con el tipo de cambio Banxico vigente
+    # ⚠️ Ventanas horarias sin confirmar con el anexo metodológico CRE/CNE (no está en los
+    # boletines de tarifas) — split genérico ampliamente citado (punta 18-22h, base 00-06h).
+    # Tunable; reemplazar si se consigue el anexo real por división/temporada.
+    "period_hours": {"punta": 4, "intermedia": 14, "base": 6},
+    "divisions": {
+        # punta/intermedia/base: MXN/kWh. demanda_mxn_kw: MXN/kW de capacidad/mes. cargo_fijo: MXN/mes.
+        "Golfo Norte": {"punta": 1.6634, "intermedia": 1.5333, "base": 0.9904,
+                        "demanda_mxn_kw": 444.11, "cargo_fijo_mxn": 502.03,
+                        "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Jalisco": {"punta": 2.1829, "intermedia": 1.9387, "base": 1.0810,
+                    "demanda_mxn_kw": 589.41, "cargo_fijo_mxn": 372.38,
+                    "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        "Peninsular": {"punta": 2.4864, "intermedia": 2.2270, "base": 1.3180,
+                       "demanda_mxn_kw": 516.95, "cargo_fijo_mxn": 421.57,
+                       "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        "Centro Occidente": {"punta": 2.0412, "intermedia": 1.8132, "base": 1.0206,
+                             "demanda_mxn_kw": 532.42, "cargo_fijo_mxn": 252.50,
+                             "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Bajío": {"punta": 2.0620, "intermedia": 1.8107, "base": 1.0228,
+                  "demanda_mxn_kw": 475.04, "cargo_fijo_mxn": 427.19,
+                  "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Valle de México Centro": {"punta": 2.2908, "intermedia": 1.9601, "base": 1.1823,
+                                    "demanda_mxn_kw": 496.78, "cargo_fijo_mxn": 466.83,
+                                    "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        # Fallback para CP fuera de las 6 divisiones confirmadas: promedio simple de las 6 de arriba.
+        # No es una tarifa real de ninguna división — se marca explícitamente como no confirmada.
+        "Nacional (promedio, sin confirmar)": {"punta": 2.1211, "intermedia": 1.8805, "base": 1.1025,
+                                                "demanda_mxn_kw": 509.12, "cargo_fijo_mxn": 407.08,
+                                                "source": "promedio de las 6 divisiones confirmadas",
+                                                "as_of": None},
+    },
+    # Municipio -> división. Clave "Municipio|Estado" (coincide con el catálogo SEPOMEX).
+    "municipio_division": {
+        "Monterrey|Nuevo León": "Golfo Norte",
+        "Guadalajara|Jalisco": "Jalisco",
+        "Mérida|Yucatán": "Peninsular",
+        "Morelia|Michoacán de Ocampo": "Centro Occidente",  # SEPOMEX usa el nombre oficial completo
+        "San Miguel de Allende|Guanajuato": "Bajío",
+        # CDMX tiene 3 sub-divisiones (Centro/Norte/Sur, ±5-8% entre sí); "Centro" es el default
+        # documentado — afinar por alcaldía es un refinamiento futuro.
+        **{k: "Valle de México Centro" for k in _CDMX_KEYS},
+    },
+    # DAP (Derecho de Alumbrado Público): lo fija cada municipio, no CFE. A escala de consumo
+    # comercial (~360kW) casi siempre es marginal frente al costo de energía/demanda de arriba.
+    # type: "none" (confirmado que no aplica) | "flat_mxn_month" | "pct_of_energy_cost" |
+    # "pct_of_energy_cost_capped" (con tope en pesos/mes). Sin entrada = sin confirmar -> no se aplica.
+    "municipio_dap": {
+        "Guadalajara|Jalisco": {"type": "none", "source": "Ley de Ingresos Guadalajara 2026 (confirmado, sin DAP)"},
+        **{k: {"type": "none", "source": "Código Fiscal CDMX (confirmado, sin DAP)"} for k in _CDMX_KEYS},
+        "Morelia|Michoacán de Ocampo": {"type": "flat_mxn_month", "amount_mxn": 25.00,
+                                        "source": "Ley de Ingresos Morelia 2026, Art. 18"},
+        "San Miguel de Allende|Guanajuato": {"type": "pct_of_energy_cost_capped", "pct": 0.12,
+                                            "cap_mxn_month": 1111.09,
+                                            "source": "Ley de Ingresos SMA 2026, Arts. 32/56"},
+        "Mérida|Yucatán": {"type": "pct_of_energy_cost", "pct": 0.05,
+                          "source": ("Ley de Ingresos Mérida 2026, Arts. 104-109 — tope legal; el monto "
+                                     "real es per-cápita y probablemente menor, no reproducible sin el "
+                                     "padrón de usuarios de CFE. Se usa el tope como aproximación conservadora.")},
+        # Monterrey: sin confirmar (no se localizó la Ley de Ingresos estatal 2026 de NL) — sin
+        # entrada = no se aplica DAP para este municipio hasta tener el dato real.
     },
 }
 
