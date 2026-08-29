@@ -48,6 +48,7 @@ function init(){
     b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
 
   loadMeta(); loadNse(); loadObsLayer(); loadChargers('Monterrey');
+  setTimeout(()=>map.invalidateSize(), 50);
 }
 
 async function loadObsLayer(){
@@ -181,7 +182,7 @@ function bar(lbl, v){
 }
 function stat(n,k){ return `<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`; }
 const usd = n => '$'+(n>=1e6 ? (n/1e6).toFixed(2)+'M' : Math.round(n).toLocaleString());
-const OPEX_LBL={electricidad:'Electricidad',mantenimiento_plataforma_pasarela:'Mantenimiento + plataforma + pasarela'};
+const OPEX_LBL={electricidad:'Electricidad',comision_bancaria:'Comisión bancaria',mantenimiento:'Mantenimiento',plataforma_software:'Plataforma (software)',servicio:'Servicio (agregado)'};
 function costRows(bd, labels, total){
   return Object.entries(bd).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
     `<div class="hbar"><div class="top"><span>${labels[k]||k}</span><span>${usd(v)}</span></div>
@@ -218,11 +219,15 @@ function businessHtml(b){
       ${stat(usd(y9.revenue)+'/a','Ingreso año 9 (meseta)')}
       ${stat(usd(b.gross_profit_annual)+'/a','Utilidad año 1')}
       ${stat(roiPct,'ROI '+b.roi_horizon_years+' años')}
+      ${stat(usd(b.npv),'NPV @ '+(b.discount_rate_pct*100).toFixed(0)+'%')}
+      ${stat(usd(b.residual_value),'Valor residual (año 9)')}
     </div>
-    <div class="disc">Electricidad punta ${lf.electricity_peak_usd_kwh} USD/kWh · valle ${lf.electricity_offpeak_usd_kwh} USD/kWh ·
-      precio al usuario ${lf.price_per_kwh_user} USD/kWh · utilización efectiva ${(lf.utilization*100).toFixed(0)}%</div>
+    <div class="disc">Electricidad punta/día ${lf.electricity_peak_usd_kwh} USD/kWh · valle/noche ${lf.electricity_offpeak_usd_kwh} USD/kWh ·
+      precio al usuario ${lf.price_per_kwh_user} USD/kWh · utilización efectiva ${(lf.utilization*100).toFixed(0)}%
+      ${lf.inflation_pct?(' · inflación '+(lf.inflation_pct*100).toFixed(1)+'%/a'):''}
+      · crecimiento parque EV+PHEV ${(lf.ev_fleet_growth_pct_yoy*100).toFixed(1)}%/a</div>
     <details class="costs"><summary>Desglose OpEx (año 1)</summary>${costRows(b.opex_breakdown,OPEX_LBL,b.opex_annual)}</details>
-    <details class="costs"><summary>Utilidad acumulada del inversionista (9 años)</summary>${yearBars(b.years)}</details>
+    <details class="costs"><summary>Utilidad acumulada del inversionista (9 años, incl. valor residual)</summary>${yearBars(b.years)}</details>
     <details class="costs"><summary>🤝 Esquema de comisiones (pago único, informativo)</summary>
       <div class="disc">VIP ${usd(com.vip_usd)} (5% del CapEx) · Vendedor ${usd(com.vendedor_usd)} · Arquitecto ${usd(com.arquitecto_usd)}.
       Se pagan al implementar el sitio; no se restan del ROI del inversionista mostrado arriba.<br>${com.recurring_note}</div></details>
@@ -325,6 +330,10 @@ function renderAnalysis(a){
     <div class="disc">${a.disclaimer}</div>`;
   const sw=$('#sensWrap');
   if(sw) sw.addEventListener('toggle',()=>{ if(sw.open && !sw.dataset.loaded){ sw.dataset.loaded='1'; loadSensitivity(); } });
+  showRationale(a.rationale);
+}
+function showRationale(text){
+  $('#rationaleText').textContent=text||'Evalúa un punto para ver el racional de la decisión.';
 }
 
 /* ---------- candidatos ---------- */
@@ -459,19 +468,34 @@ async function loadAjustes(){
         <input id="b-capex" type="number" value="${bc.site_capex_usd}"></label>
       <label style="font-size:11px;color:var(--mut)">Precio de carga al usuario (USD/kWh)
         <input id="b-price" type="number" step="0.01" value="${bc.price_per_kwh_user}"></label>
-      <label style="font-size:11px;color:var(--mut)">Costo electricidad punta (USD/kWh)
+      <label style="font-size:11px;color:var(--mut)">Costo electricidad punta/día (USD/kWh)
         <input id="b-elecpeak" type="number" step="0.01" value="${bc.electricity_cost_peak_per_kwh}"></label>
-      <label style="font-size:11px;color:var(--mut)">Costo electricidad valle (USD/kWh)
-        <input id="b-elecoffpeak" type="number" step="0.01" value="${bc.electricity_cost_offpeak_per_kwh}"></label>
+      <label style="font-size:11px;color:var(--mut)">% más barata la electricidad en valle/noche
+        <input id="b-nightdisc" type="number" step="1" value="${(bc.electricity_night_discount_pct*100).toFixed(1)}"></label>
       <label style="font-size:11px;color:var(--mut)">% de ganancia para el dueño del local
         <input id="b-landlord" type="number" step="1" value="${(bc.landlord_profit_share*100).toFixed(0)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Comisión bancaria / pasarela de pago (% de facturación)
+        <input id="b-bank" type="number" step="0.1" value="${(bc.bank_commission_pct*100).toFixed(1)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Inflación anual (%)
+        <input id="b-inflation" type="number" step="0.1" value="${(bc.inflation_pct*100).toFixed(1)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Tasa de descuento para NPV (%)
+        <input id="b-discount" type="number" step="0.5" value="${(bc.discount_rate_pct*100).toFixed(1)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Valor residual del hardware al año 9 (% del CapEx)
+        <input id="b-residual" type="number" step="1" value="${(bc.residual_value_pct*100).toFixed(0)}"></label>
+      <label style="font-size:11px;color:var(--mut)">% de crecimiento anual del parque EV+PHEV
+        <input id="b-evgrowth" type="number" step="0.1" value="${(bc.ev_fleet_growth_pct_yoy*100).toFixed(1)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Utilización año 1 (%)
+        <input id="b-utilyear1" type="number" step="1" value="${(bc.utilization_year1_pct*100).toFixed(0)}"></label>
+      <label style="font-size:11px;color:var(--mut)">Tope de utilización realista (%)
+        <input id="b-utilceil" type="number" step="1" value="${(bc.utilization_ceiling_pct*100).toFixed(0)}"></label>
     </div>
     <button id="bApply" class="primary block">Aplicar supuestos</button>
     <div id="bMsg" class="disc"></div>
     <div class="note">Modelo fijo: 1 set de 6 cargadores (360kW, 6 autos simultáneos), 9 años — no se
-      proponen sets adicionales. CapEx de partida <b>USD $250k</b>. Utilización esperada 23%→40%
-      (año 7 en adelante). Mantenimiento (10%) y plataforma (13%) escalan con la facturación.
-      Edita el detalle en <code>app/config.py</code>.</div>`;
+      proponen sets adicionales. CapEx de partida <b>USD $250k</b>. La utilización parte de
+      ${(bc.utilization_year1_pct*100).toFixed(0)}% y crece al ritmo del parque EV+PHEV hasta un tope
+      de ${(bc.utilization_ceiling_pct*100).toFixed(0)}%. Mantenimiento (10%) y plataforma (13%) escalan
+      con la facturación. Edita el detalle en <code>app/config.py</code>.</div>`;
   $('#ajustes').appendChild(bizDiv);
   $('#bApply').addEventListener('click', applyBusiness);
 }
@@ -479,8 +503,15 @@ async function applyBusiness(){
   const body={site_capex_usd:parseFloat($('#b-capex').value),
     price_per_kwh_user:parseFloat($('#b-price').value),
     electricity_cost_peak_per_kwh:parseFloat($('#b-elecpeak').value),
-    electricity_cost_offpeak_per_kwh:parseFloat($('#b-elecoffpeak').value),
-    landlord_profit_share:parseFloat($('#b-landlord').value)/100};
+    electricity_night_discount_pct:parseFloat($('#b-nightdisc').value)/100,
+    landlord_profit_share:parseFloat($('#b-landlord').value)/100,
+    bank_commission_pct:parseFloat($('#b-bank').value)/100,
+    inflation_pct:parseFloat($('#b-inflation').value)/100,
+    discount_rate_pct:parseFloat($('#b-discount').value)/100,
+    residual_value_pct:parseFloat($('#b-residual').value)/100,
+    ev_fleet_growth_pct_yoy:parseFloat($('#b-evgrowth').value)/100,
+    utilization_year1_pct:parseFloat($('#b-utilyear1').value)/100,
+    utilization_ceiling_pct:parseFloat($('#b-utilceil').value)/100};
   await fetch(API+'/api/business',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   $('#bMsg').style.color='var(--acc)';
   $('#bMsg').innerHTML='Supuestos aplicados. Vuelve a Explorar y evalúa un punto.';

@@ -69,7 +69,7 @@ class Engine:
                 row.append(b["break_even_months"])
             grid.append(row)
         bc = config.BUSINESS_CASE
-        current_service_pct = bc["payment_gateway_pct"] + bc["maintenance_pct"] + bc["platform_pct"]
+        current_service_pct = bc["bank_commission_pct"] + bc["maintenance_pct"] + bc["platform_pct"]
         return {
             "sites": sites,
             "prices": prices, "services": services, "grid": grid,
@@ -244,6 +244,19 @@ class Engine:
         else:
             retail_anchor_score = max(0, 100 - anchor_d / radius_km * 100)
 
+        # descripción del ancla comercial/oficinas más cercana, para la narrativa (no afecta el score)
+        office_obs = min(((s, d) for s, d in obs_near if s.get("site_type") == "corporate"),
+                         key=lambda x: x[1], default=None)
+        if seed_near is not None and anchor_d is not None and abs(seed_near[1] - anchor_d) < 1e-9:
+            anchor_desc = f"El ancla comercial más cercana es {seed_near[0]['name']}, a ~{round(seed_near[1], 2)}km"
+        elif office_obs is not None:
+            anchor_desc = (f"El corporativo/oficinas más cercano registrado en campo es "
+                           f"{office_obs[0]['name']}, a ~{round(office_obs[1], 2)}km")
+        elif anchor_d is not None:
+            anchor_desc = f"Hay un ancla comercial/retail a ~{round(anchor_d, 2)}km"
+        else:
+            anchor_desc = "no se detectó un ancla comercial u oficinas cercanas en las fuentes disponibles"
+
         # oportunidad Tesla: hay Tesla pero poca carga pública multi-estándar
         ntesla = len(tesla)
         non_tesla_public = sum(1 for p, _ in public if not p["tesla"])
@@ -271,6 +284,9 @@ class Engine:
         # business case para el set de 6 cargadores
         biz = business.compute(sites, {"metro": metro, "ses_index": ses,
                                        "util": total / 100.0, "cp": cp})
+
+        rationale = self._rationale_narrative(metro, radius_km, veh, ses_ctx, ses, sub, W, total,
+                                              verdict, npub, ev_per_charger, ntesla, anchor_desc, biz)
 
         insights_txt = self._insights_text(metro, state_key, veh, sub, npub, ntesla, ses_ctx)
         if obs_near:
@@ -323,6 +339,7 @@ class Engine:
                 for p, d in nearby[:8]
             ],
             "insights": insights_txt,
+            "rationale": rationale,
             "disclaimer": "cars_est/ev_est/home_chargers_est son estimaciones modeladas "
                           "(no registro vehicular real). Ver estimation.assumptions.",
         }
@@ -512,6 +529,64 @@ class Engine:
             out.append(f"NSE (proxy por señales): {tier} — punto fuera de polígonos NSE cargados.")
         out.append("EVs en México son premium (BEV ~MX$822k vs ICE ~MX$554k), correlacionados con NSE alto.")
         return out
+
+    def _rationale_narrative(self, metro, radius_km, veh, ses_ctx, ses, sub, W, total, verdict,
+                             npub, ev_per_charger, ntesla, anchor_desc, biz):
+        """Párrafo narrado que sintetiza el por qué del score (factores reales del sitio) y,
+        por separado, los supuestos genéricos del caso de negocio que aún no están calibrados
+        por sitio — pensado como panel de transparencia, no como un cálculo nuevo."""
+        bc = config.BUSINESS_CASE
+        mk = self.insights["market_2025"]
+        prices = self.insights["avg_price_mxn"]
+        healthy = config.HEALTHY_EV_PER_PUBLIC_CHARGER
+
+        tier = "alto" if ses > 0.66 else ("medio-alto" if ses > 0.4 else "medio")
+        nse_txt = (f"NSE {ses_ctx['nse']} ({ses_ctx['zone']}, índice {round(ses, 2)})"
+                  if ses_ctx["source"] == "polygon"
+                  else f"NSE proxy nivel {tier} (índice {round(ses, 2)}, sin polígono oficial en el punto)")
+
+        if ev_per_charger is None:
+            gap_txt = ("sin cargadores públicos cercanos, por lo que la brecha de oferta es total "
+                      "y la referencia sana de la industria no aplica todavía")
+        elif ev_per_charger > healthy:
+            gap_txt = (f"{round(ev_per_charger, 1)} autos eléctricos por cada cargador público, por "
+                      f"arriba de la referencia sana de {healthy} — señal de posible saturación y "
+                      f"oportunidad de más oferta")
+        else:
+            gap_txt = (f"{round(ev_per_charger, 1)} autos eléctricos por cada cargador público, por "
+                      f"debajo de la referencia sana de {healthy} — la oferta pública todavía es cómoda")
+        tesla_txt = (f" Hay {ntesla} sitio(s) con carga Tesla cercanos y poca carga multi-estándar, "
+                    f"una oportunidad de complementar la red." if ntesla else "")
+
+        dominant = max(sub, key=lambda k: sub[k] * W[k])
+        dominant_lbl = {"demand": "la demanda estimada de autos eléctricos", "gap": "la brecha entre oferta y demanda pública",
+                        "ses": "el nivel socioeconómico de la zona", "retail_anchor": "la cercanía a un ancla comercial",
+                        "tesla_opportunity": "la oportunidad de complementar sitios Tesla"}[dominant]
+
+        lf = biz["local_factors"]
+        return (
+            f"Esta ubicación obtiene un score de {total}/100 ({verdict}), impulsado principalmente por "
+            f"{dominant_lbl}. En un radio de {radius_km}km{(' en ' + metro) if metro else ''} se estima un "
+            f"parque circulante de ~{veh['cars_est']:,} autos, de los cuales ~{veh['ev_est']:,} son eléctricos "
+            f"o híbridos enchufables (~{veh['ev_penetration_pct']}% de penetración local); a nivel nacional el "
+            f"mercado EV+PHEV crece ~{round(mk['ev_growth_yoy'] * 100)}%/año según ICCT, aunque el caso de "
+            f"negocio usa su propio supuesto de crecimiento "
+            f"({round(config.VEHICLE_MODEL['ev_fleet_growth_pct_yoy'] * 100, 1)}%/año, ajustable en Ajustes) "
+            f"para proyectar la curva de utilización a 9 años. {anchor_desc}. El {nse_txt} es relevante porque "
+            f"los autos eléctricos en México son de gama alta (BEV ~MX${prices['BEV']:,} vs. combustión "
+            f"~MX${prices['ICE']:,}), correlacionados con NSE alto. La oferta pública de carga es de {npub} "
+            f"cargadores en el radio, equivalente a {gap_txt}.{tesla_txt} Para el caso de negocio se asume una "
+            f"inversión de ${biz['capex_total']:,} USD en 1 set de 6 cargadores, electricidad a "
+            f"{lf['electricity_peak_usd_kwh']} USD/kWh en punta y {lf['electricity_offpeak_usd_kwh']} USD/kWh "
+            f"en valle, una tasa de descuento del {round(biz['discount_rate_pct'] * 100)}% para el NPV, "
+            f"inflación anual del {round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
+            f"{round(bc['residual_value_pct'] * 100)}% del CapEx al año 9 — todos supuestos genéricos a nivel "
+            f"nacional, no calibrados por sitio. Quedan fuera del modelo, y son oportunidades de mejora con "
+            f"datos reales del sitio: el costo real de mano de obra local (hoy implícito dentro del 10% de "
+            f"mantenimiento), la renta real por metro cuadrado (hoy se usa un reparto fijo de utilidad "
+            f"16%/84% en vez de una renta por m²), y la posibilidad de generación solar en sitio (no modelada), "
+            f"que podría reducir el costo de electricidad y mejorar el payback."
+        )
 
 
 # instancia global (carga perezosa)

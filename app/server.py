@@ -31,7 +31,7 @@ def engine():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "EVSiting/1.0"
+    server_version = "CSEnergy/1.0"
 
     # ---------- helpers ----------
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
@@ -79,7 +79,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/demand":
                 return self._send(200, engine().demand)
             if path == "/api/business-config":
-                return self._send(200, config.BUSINESS_CASE)
+                return self._send(200, {**config.BUSINESS_CASE,
+                                        "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"]})
             if path == "/api/observations":
                 e = engine()
                 return self._send(200, {"count": len(e.obs.items),
@@ -142,11 +143,15 @@ class Handler(BaseHTTPRequestHandler):
         if "site_capex_usd" in data and data["site_capex_usd"] is not None:
             bc["site_capex_usd"] = max(0, float(data["site_capex_usd"]))
         for k in ("price_per_kwh_user", "electricity_cost_peak_per_kwh",
-                  "electricity_cost_offpeak_per_kwh", "maintenance_pct",
-                  "platform_pct", "payment_gateway_pct", "landlord_profit_share"):
+                  "electricity_night_discount_pct", "maintenance_pct", "platform_pct",
+                  "bank_commission_pct", "landlord_profit_share", "inflation_pct",
+                  "discount_rate_pct", "residual_value_pct", "utilization_year1_pct",
+                  "utilization_ceiling_pct"):
             if k in data and data[k] is not None:
                 bc[k] = float(data[k])
-        return self._send(200, {"business_case": bc})
+        if "ev_fleet_growth_pct_yoy" in data and data["ev_fleet_growth_pct_yoy"] is not None:
+            config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"] = float(data["ev_fleet_growth_pct_yoy"])
+        return self._send(200, {"business_case": bc, "vehicle_model": config.VEHICLE_MODEL})
 
     def _handle_weights(self, data):
         """Actualiza pesos del scoring en vivo. Se normalizan a suma 1.0."""
@@ -204,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
 def run(host="127.0.0.1", port=8000):
     engine()  # precarga
     srv = ThreadingHTTPServer((host, port), Handler)
-    print(f"\n  EV Siting demo corriendo en  http://{host}:{port}\n")
+    print(f"\n  CS Energy demo corriendo en  http://{host}:{port}\n")
     print("  API:  /api/analyze?lat=25.625&lon=-100.308")
     print("        /api/candidates?metro=Monterrey")
     print("  Ctrl+C para detener.\n")

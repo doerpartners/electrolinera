@@ -59,6 +59,10 @@ VEHICLE_MODEL = {
     "state_adoption_boost_max": 2.5,
     # Multiplicador por NSE (proxy local): NSE alto => más EVs.
     "ses_boost_max": 2.0,
+    # % de crecimiento anual del parque EV+PHEV — alimenta la curva de utilización
+    # a 9 años del business case (ver BUSINESS_CASE.utilization_ceiling_pct).
+    # Default calibrado para reproducir de cerca la curva original del proveedor (23%→40%).
+    "ev_fleet_growth_pct_yoy": 0.097,
 }
 
 # --- Business case: costos, ingresos y payback (todo tunable) ---
@@ -71,19 +75,26 @@ BUSINESS_CASE = {
     "site_capex_usd": 250_000,   # transformador + 6 cargadores + cable + instalación, el set completo
     "site_capacity_kw": 360,     # 6 cargadores × ~60kW
     "chargers_per_site": 6,
-    # Utilización esperada año 1..9 (curva del proveedor; meseta desde año 7).
-    "utilization_by_year": [0.23, 0.26, 0.28, 0.32, 0.35, 0.38, 0.40, 0.40, 0.40],
+    # Curva de utilización año 1..9: arranca en utilization_year1_pct y crece cada año
+    # al ritmo de VEHICLE_MODEL.ev_fleet_growth_pct_yoy, con tope en utilization_ceiling_pct
+    # (capacidad física realista del set de 6 cargadores). Reemplaza la lista fija original
+    # del proveedor (23%→40%) por una fórmula ligada al crecimiento real del parque EV.
+    "utilization_year1_pct": 0.23,
+    "utilization_ceiling_pct": 0.40,
     "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)
     "peak_hours_per_day": 12.5,
     "offpeak_hours_per_day": 11.5,
     "price_per_kwh_user": 0.46,               # mismo precio en horario punta y valle (así viene calculado en la fuente)
-    "electricity_cost_peak_per_kwh": 0.17,
-    "electricity_cost_offpeak_per_kwh": 0.15,
+    "electricity_cost_peak_per_kwh": 0.17,    # base (horario punta/día)
+    "electricity_night_discount_pct": 0.1176, # % más barata la electricidad en valle/noche vs punta (0.15 vs 0.17 original)
     "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada a ambos costos
-    "payment_gateway_pct": 0.0,                # sin costo de pasarela de pago modelado (igual que la fuente)
+    "bank_commission_pct": 0.0,                # comisión bancaria/pasarela de pago, % de facturación (sin costo en la fuente)
     "maintenance_pct": 0.10,                   # % de facturación
     "platform_pct": 0.13,                      # % de facturación
     "landlord_profit_share": 0.16,             # resto (84%) es del inversionista
+    "inflation_pct": 0.0,                      # inflación anual nominal: escala precio y costo de electricidad por igual
+    "discount_rate_pct": 0.12,                 # tasa de descuento para NPV (WACC / tasa mínima esperada, asunción — ajustable)
+    "residual_value_pct": 0.20,                # valor residual del hardware al año 9, % del CapEx, para el inversionista
     # Comisiones de venta por sitio implementado — informativas, no restan del ROI del inversionista
     # (en la fuente tampoco están conectadas a la hoja de ROI).
     "commissions": {

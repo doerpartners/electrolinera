@@ -1,4 +1,4 @@
-# EV Siting MX — Recomendador de ubicaciones para cargadores EV
+# CS Energy MX — Recomendador de ubicaciones para cargadores EV
 
 Demo local que sugiere **dónde instalar un set de 6 cargadores** (6 autos simultáneos) para
 autos eléctricos en México (foco: Monterrey y Guadalajara), y que responde la
@@ -127,10 +127,13 @@ simultáneos), **CapEx $250,000 USD**, proyectado a **9 años** (vida media
 asumida de un cargador EV). No se proponen sets adicionales por ubicación.
 
 - **CapEx**: $250,000 USD por set de 6 cargadores (transformador + cargadores + cable + instalación).
-- **Utilización esperada**: curva año 1→9 (23%→40%, meseta desde el año 7), modulada por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
-- **Energía y costo de electricidad**: split horario **punta/valle** (12.5h/11.5h), con tarifas distintas y 10% de pérdida eléctrica incluida.
-- **OpEx**: electricidad + pasarela de pago + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
+- **Utilización esperada**: parte de `utilization_year1_pct` (23%) y crece cada año al ritmo de `VEHICLE_MODEL.ev_fleet_growth_pct_yoy` (% de crecimiento anual del parque EV+PHEV, ~9.7% por defecto) hasta un tope de `utilization_ceiling_pct` (40%) — liga la demanda real proyectada al ROI en vez de una curva fija. Modulada además por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
+- **Energía y costo de electricidad**: split horario **punta/valle** (12.5h/11.5h). El costo de valle/noche se deriva del de punta/día vía `electricity_night_discount_pct` (% más barata la electricidad de noche), con 10% de pérdida eléctrica incluida en ambos.
+- **Inflación anual** (`inflation_pct`): escala precio al usuario y costo de electricidad por igual cada año (nominal).
+- **OpEx**: electricidad + comisión bancaria/pasarela de pago (`bank_commission_pct`) + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
 - **Reparto de utilidad**: 16% dueño del local / 84% inversionista.
+- **Valor residual** (`residual_value_pct`, 20% del CapEx por defecto): se suma al flujo del inversionista solo en el año 9.
+- **NPV** (`discount_rate_pct`, 12% por defecto): valor presente neto del flujo del inversionista (CapEx en t=0, utilidad + valor residual año 9), además del payback/ROI simples (sin descontar).
 - **Comisiones de venta** (VIP/Vendedor/Arquitecto): pago único informativo al implementar el sitio — no se restan del ROI del inversionista (tampoco lo estaban en la fuente).
 
 **KPI principal — Payback (años/meses):** primer año en que la utilidad acumulada del
@@ -145,6 +148,19 @@ fijos CapEx, electricidad y utilización del sitio. En la UI se muestra como un
 
 Ajustable en vivo con `POST /api/business` o en la pestaña **Ajustes**. Los
 candidatos muestran **CapEx y payback** por sitio.
+
+### Racional narrado de la decisión
+Cada evaluación (`analyze_point`) genera un párrafo narrado (`rationale`, en
+`app/scoring.py::_rationale_narrative`) que sintetiza en prosa el porqué del score:
+comercios/oficinas cercanas, NSE, % de penetración EV local, % de crecimiento de
+adopción EV (nacional, ICCT, vs. el supuesto propio del caso de negocio), la
+correlación precio-NSE de los vehículos, la relación cargadores/EVs vs. la
+referencia sana, y — por separado — los supuestos genéricos del caso de negocio
+que aún no están calibrados por sitio (tasa de descuento NPV, inflación, CapEx,
+tarifa eléctrica, valor residual) junto con oportunidades de mejora no modeladas
+(mano de obra real, renta por m², paneles solares). Se muestra en un panel
+flotante abajo a la derecha del mapa (`#rationale` en `web/index.html`/`app.js`)
+al evaluar cualquier punto.
 
 ### Nivel socioeconómico por polígonos (NSE)
 El sub-score **ses** usa polígonos NSE reales vía point-in-polygon:

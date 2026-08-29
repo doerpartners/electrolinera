@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EV Siting · Sistema de ubicación de cargadores</title>
+<title>CS Energy · Sistema de ubicación de cargadores</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <link rel="stylesheet" href="/style.css">
@@ -12,7 +12,7 @@
 <div id="app">
   <aside id="sidebar">
     <header>
-      <h1>⚡ EV Siting <span>MX</span></h1>
+      <h1>⚡ CS Energy <span>MX</span></h1>
       <p class="sub">Sistema de sugerencia de ubicación de cargadores · demo</p>
     </header>
 
@@ -83,7 +83,12 @@
     <footer id="metaFoot"></footer>
   </aside>
 
-  <main id="mapwrap"><div id="map"></div></main>
+  <main id="mapwrap"><div id="map"></div>
+    <div id="rationale">
+      <div class="rt-title">🧠 Racional de la decisión</div>
+      <p id="rationaleText">Evalúa un punto para ver el racional de la decisión.</p>
+    </div>
+  </main>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
