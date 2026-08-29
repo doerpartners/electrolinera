@@ -204,7 +204,7 @@ function businessHtml(b){
   const pay = b.payback_years!=null ? b.payback_years+' años' : 'n/d';
   const roiPct = b.roi!=null ? (b.roi*100).toFixed(0)+'%' : 'n/d';
   const lf=b.local_factors, y9=b.year9, com=b.commissions;
-  return `<div class="section-t">💰 Business case · ${b.sites} sitio${b.sites===1?'':'s'} (360kW c/u)</div>
+  return `<div class="section-t">💰 Business case · 1 set de ${b.chargers} cargadores (${b.chargers} autos simultáneos)</div>
     <div class="bekpi" style="border-color:${beCol}">
       <div class="bev" style="color:${beCol}">${be}</div>
       <div class="bel">Punto de equilibrio<br><span>recuperar CapEx de ${usd(b.capex_total)}</span></div>
@@ -258,7 +258,7 @@ async function loadSensitivity(){
       return `<td class="heatc${cur}" style="background:${beColorMonths(v)}" title="precio ${p} · servicio ${(d.services[j]*100).toFixed(0)}%: ${label} meses">${label}</td>`;
     }).join('')}</tr>`).join('');
     $('#sensBox').innerHTML=`
-      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (${d.sites} sitio${d.sites===1?'':'s'}). Filas = <b>precio de carga</b> (USD/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} USD/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
+      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (1 set de 6 cargadores). Filas = <b>precio de carga</b> (USD/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} USD/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
       <div style="overflow-x:auto"><table class="heat">${head}${rows}</table></div>
       <div class="heatleg">
         <span><i style="background:${beColorMonths(24)}"></i>≤36m</span>
@@ -300,7 +300,7 @@ function renderAnalysis(a){
         </div>
         <div class="meta"><div class="verdict" style="color:${col}">${a.verdict}<small>${a.verdict_msg}</small></div></div>
       </div>
-      <div class="stations">Instalar ~<b>${a.recommended_sites}</b> sitio${a.recommended_sites===1?'':'s'} <small>(hub de 360kW c/u)</small></div>
+      <div class="stations">Instalar <b>1 set de ${a.business_case.chargers} cargadores</b> <small>(${a.business_case.chargers} autos simultáneos)</small></div>
       <div class="bars">
         ${bar('Demanda',s.demand)}${bar('Brecha',s.gap)}${bar('NSE',s.ses)}
         ${bar('Ancla retail',s.retail_anchor)}${bar('Oport. Tesla',s.tesla_opportunity)}
@@ -338,11 +338,11 @@ async function loadCandidates(){
       const col=COLOR[c.verdict]||'#888';
       const icon=L.divIcon({html:`<div class="marker-num" style="background:${col}">${i+1}</div>`,className:'',iconSize:[26,26],iconAnchor:[13,13]});
       L.marker([c.lat,c.lon],{icon}).addTo(candLayer)
-        .bindPopup(`<b>#${i+1} ${c.label}</b><br>Score ${c.score} · ${c.verdict}<br>Instalar ~${c.recommended_sites} sitio${c.recommended_sites===1?'':'s'}<br><i>${c.reason}</i>`);
+        .bindPopup(`<b>#${i+1} ${c.label}</b><br>Score ${c.score} · ${c.verdict}<br>Instalar 1 set de ${c.chargers} cargadores<br><i>${c.reason}</i>`);
       return `<div class="candrow" data-lat="${c.lat}" data-lon="${c.lon}">
         <div class="rank" style="background:${col}">${i+1}</div>
         <div class="cinfo"><div class="cname">${c.label}</div>
-        <div class="csub"><span class="kind">${c.kind}</span> · ~${c.recommended_sites} sitio${c.recommended_sites===1?'':'s'} · ${usd(c.capex)} · equilibrio ${c.break_even_months!=null?c.break_even_months+'m':'n/d'}</div></div>
+        <div class="csub"><span class="kind">${c.kind}</span> · 1 set de ${c.chargers} cargadores · ${usd(c.capex)} · equilibrio ${c.break_even_months!=null?c.break_even_months+'m':'n/d'}</div></div>
         <div class="cscore" style="color:${col}">${c.score}</div></div>`;
     }).join('');
     $('#candlist').innerHTML=`<div class="section-t">Top candidatos · ${metro}</div>${rows}
@@ -453,9 +453,9 @@ async function loadAjustes(){
   const bc=await (await fetch(API+'/api/business-config')).json();
   const bizDiv=document.createElement('div');
   bizDiv.innerHTML=`
-    <h3 class="s">💰 Business case (supuestos, por sitio)</h3>
+    <h3 class="s">💰 Business case (supuestos, 1 set de ${bc.chargers_per_site} cargadores)</h3>
     <div class="form">
-      <label style="font-size:11px;color:var(--mut)">CapEx por sitio (USD, hub de 360kW)
+      <label style="font-size:11px;color:var(--mut)">CapEx del set (USD, ${bc.chargers_per_site} cargadores)
         <input id="b-capex" type="number" value="${bc.site_capex_usd}"></label>
       <label style="font-size:11px;color:var(--mut)">Precio de carga al usuario (USD/kWh)
         <input id="b-price" type="number" step="0.01" value="${bc.price_per_kwh_user}"></label>
@@ -468,9 +468,10 @@ async function loadAjustes(){
     </div>
     <button id="bApply" class="primary block">Aplicar supuestos</button>
     <div id="bMsg" class="disc"></div>
-    <div class="note">Modelo por sitio (hub de 360kW, 9 años): CapEx de partida <b>USD $250k</b>.
-      Utilización esperada 23%→40% (año 7 en adelante). Mantenimiento (10%) y plataforma (13%) escalan
-      con la facturación. Edita el detalle en <code>app/config.py</code>.</div>`;
+    <div class="note">Modelo fijo: 1 set de 6 cargadores (360kW, 6 autos simultáneos), 9 años — no se
+      proponen sets adicionales. CapEx de partida <b>USD $250k</b>. Utilización esperada 23%→40%
+      (año 7 en adelante). Mantenimiento (10%) y plataforma (13%) escalan con la facturación.
+      Edita el detalle en <code>app/config.py</code>.</div>`;
   $('#ajustes').appendChild(bizDiv);
   $('#bApply').addEventListener('click', applyBusiness);
 }
@@ -645,7 +646,7 @@ function loadAyuda(){
   $('#ayuda').innerHTML=`
     <div class="ayuda">
     <h3 class="s">¿Qué hace este sistema?</h3>
-    <p>Sugiere <b>dónde instalar sitios de carga</b> (hubs de 360kW) EV y responde,
+    <p>Sugiere <b>dónde instalar un set de 6 cargadores</b> (6 autos simultáneos) EV y responde,
     para cualquier punto, <b>“¿aquí es buena ubicación?”</b> con datos locales y a la redonda.</p>
 
     <h3 class="s">Cómo usar la UI</h3>

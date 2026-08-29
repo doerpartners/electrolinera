@@ -266,9 +266,9 @@ class Engine:
         total = round(total, 1)
 
         verdict, verdict_msg = self._verdict(total)
-        sites = self._recommend_sites(sub)
+        sites = 1  # siempre 1 set de 6 cargadores (6 autos simultáneos); no se proponen más
 
-        # business case para los sitios recomendados
+        # business case para el set de 6 cargadores
         biz = business.compute(sites, {"metro": metro, "ses_index": ses,
                                        "util": total / 100.0, "cp": cp})
 
@@ -461,6 +461,7 @@ class Engine:
             a = self.analyze_point(c["lat"], c["lon"])
             scored.append({**c, "score": a["score"], "verdict": a["verdict"],
                            "recommended_sites": a["recommended_sites"],
+                           "chargers": a["business_case"]["chargers"],
                            "metro": a["query"]["metro"],
                            "ev_est": a["estimation"]["ev_est"],
                            "public_chargers": a["chargers"]["public"],
@@ -485,13 +486,6 @@ class Engine:
             if total >= th:
                 return name, msg
         return "BAJA", ""
-
-    def _recommend_sites(self, sub):
-        blocks = 1
-        if sub["demand"] > 50: blocks += 1
-        if sub["gap"] > 70: blocks += 1
-        if sub["ses"] > 60 and sub["demand"] > 40: blocks += 1
-        return min(blocks, config.MAX_BLOCKS)
 
     def _insights_text(self, metro, state_key, veh, sub, npub, ntesla, ses_ctx):
         ses = ses_ctx["index"]

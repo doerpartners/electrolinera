@@ -7,8 +7,8 @@ sin tocar la lógica del motor de scoring.
 # --- Radio de análisis por defecto (la app móvil pregunta "a la redonda") ---
 DEFAULT_RADIUS_KM = 5.0
 
-# --- Sitios de carga a recomendar según demanda (cada sitio = hub de 360kW) ---
-MAX_BLOCKS = 4  # hasta 4 sitios por ubicación
+# --- Unidad de despliegue: siempre 1 set de 6 cargadores (6 autos simultáneos) ---
+# No se recomiendan sitios/sets adicionales aunque la demanda sea alta.
 
 # --- Pesos del score de idoneidad (suman 1.0). Tunables. ---
 WEIGHTS = {
@@ -62,13 +62,15 @@ VEHICLE_MODEL = {
 }
 
 # --- Business case: costos, ingresos y payback (todo tunable) ---
-# Modelo por sitio (hub de 360kW), a 9 años — vida media asumida de un cargador EV.
+# Siempre 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos cargando simultáneamente),
+# a 9 años — vida media asumida de un cargador EV. No se proponen sets adicionales.
 # Fuente: modelo de negocios del proveedor (Excel "Modelo de Negocios", 9 años).
 BUSINESS_CASE = {
     "currency": "USD",
     "horizon_years": 9,
-    "site_capex_usd": 250_000,   # transformador + cargador + cable + instalación, por sitio
-    "site_capacity_kw": 360,
+    "site_capex_usd": 250_000,   # transformador + 6 cargadores + cable + instalación, el set completo
+    "site_capacity_kw": 360,     # 6 cargadores × ~60kW
+    "chargers_per_site": 6,
     # Utilización esperada año 1..9 (curva del proveedor; meseta desde año 7).
     "utilization_by_year": [0.23, 0.26, 0.28, 0.32, 0.35, 0.38, 0.40, 0.40, 0.40],
     "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)

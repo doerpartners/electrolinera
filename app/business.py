@@ -1,9 +1,11 @@
 """
-Business case de un sitio de carga: CapEx, OpEx, ingresos, payback y ROI a 9 años.
+Business case de 1 set de 6 cargadores (6 autos cargando simultáneamente):
+CapEx, OpEx, ingresos, payback y ROI a 9 años.
 
-Modelo por sitio (hub de 360kW), tomado del "Modelo de Negocios" del proveedor.
-Escala linealmente por número de sitios (todos idénticos). Todo tunable en
-app/config.py -> BUSINESS_CASE.
+Modelo tomado del "Modelo de Negocios" del proveedor (hub de 360kW ≈ 6 cargadores
+de ~60kW). `compute()` recibe `sites` por compatibilidad pero siempre se llama con
+1 — no se recomiendan/escalan sets adicionales aunque la demanda sea alta. Todo
+tunable en app/config.py -> BUSINESS_CASE.
 
 Cosas de la fuente que NO se portaron (documentadas para que no parezcan un olvido):
  - La curva "tiempo esperado de utilización" del Excel no alimentaba ninguna fórmula
@@ -105,6 +107,7 @@ def compute(sites, ctx):
     return {
         "currency": bc["currency"],
         "sites": sites,
+        "chargers": bc["chargers_per_site"] * sites,
         "capex_total": capex_total,
         "horizon_years": horizon,
         "years": years,

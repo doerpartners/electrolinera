@@ -1,6 +1,6 @@
 # EV Siting MX — Recomendador de ubicaciones para cargadores EV
 
-Demo local que sugiere **dónde instalar sitios de carga** (hubs de 360kW) para
+Demo local que sugiere **dónde instalar un set de 6 cargadores** (6 autos simultáneos) para
 autos eléctricos en México (foco: Monterrey y Guadalajara), y que responde la
 pregunta de la app móvil: **"¿aquí es una buena ubicación?"** con estadísticas
 locales y a 5 km a la redonda.
@@ -109,7 +109,7 @@ Score final 0–100 = suma ponderada de 5 sub-scores:
 | **retail_anchor** | 0.12 | Cercanía a mall / dining / grocery. |
 | **tesla_opportunity** | 0.10 | Sitio Tesla-only → oportunidad multi-estándar. |
 
-**Sitios recomendados** = 1–4 (cada uno un hub de 360kW) según demanda, brecha y NSE.
+**Unidad de despliegue** = siempre **1 set de 6 cargadores** (6 autos simultáneos, ~60kW c/u); no se proponen sets adicionales aunque la demanda sea alta.
 
 **Veredicto**: EXCELENTE ≥75 · BUENA ≥60 · MODERADA ≥45 · BAJA <45.
 
@@ -120,12 +120,13 @@ un *potencial por estacionamiento*: `cajones × penetración_EV × rotación`
 de 500 en la misma zona. Se reporta en `estimation.parking_ev_potential`.
 
 ### Business case (CapEx / OpEx / payback / ROI a 9 años)
-Cada evaluación calcula el caso de negocio para los sitios recomendados
+Cada evaluación calcula el caso de negocio para el set fijo de 6 cargadores
 (`app/business.py`, tunable en `config.BUSINESS_CASE`), a partir del modelo de
-negocios del proveedor: un sitio = hub de 360kW, **CapEx $250,000 USD**, proyectado
-a **9 años** (vida media asumida de un cargador EV).
+negocios del proveedor: 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos
+simultáneos), **CapEx $250,000 USD**, proyectado a **9 años** (vida media
+asumida de un cargador EV). No se proponen sets adicionales por ubicación.
 
-- **CapEx**: $250,000 USD por sitio (transformador + cargador + cable + instalación); escala linealmente con el número de sitios.
+- **CapEx**: $250,000 USD por set de 6 cargadores (transformador + cargadores + cable + instalación).
 - **Utilización esperada**: curva año 1→9 (23%→40%, meseta desde el año 7), modulada por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
 - **Energía y costo de electricidad**: split horario **punta/valle** (12.5h/11.5h), con tarifas distintas y 10% de pérdida eléctrica incluida.
 - **OpEx**: electricidad + pasarela de pago + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).

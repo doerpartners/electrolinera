@@ -87,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "observations": e.obs.items})
             if path == "/api/config":
                 return self._send(200, {"weights": config.WEIGHTS,
-                                        "max_sites": config.MAX_BLOCKS,
+                                        "charger_set_size": 6,
                                         "default_radius_km": config.DEFAULT_RADIUS_KM,
                                         "metros": list(config.METROS.keys())})
             if path == "/api/analyze":
