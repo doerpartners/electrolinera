@@ -7,9 +7,8 @@ sin tocar la lógica del motor de scoring.
 # --- Radio de análisis por defecto (la app móvil pregunta "a la redonda") ---
 DEFAULT_RADIUS_KM = 5.0
 
-# --- Múltiplos de estaciones a recomendar según demanda ---
-STATION_BLOCK = 6
-MAX_BLOCKS = 4  # hasta 24 estaciones
+# --- Sitios de carga a recomendar según demanda (cada sitio = hub de 360kW) ---
+MAX_BLOCKS = 4  # hasta 4 sitios por ubicación
 
 # --- Pesos del score de idoneidad (suman 1.0). Tunables. ---
 WEIGHTS = {
@@ -63,61 +62,35 @@ VEHICLE_MODEL = {
 }
 
 # --- Business case: costos, ingresos y payback (todo tunable) ---
-# Punto de partida: costo total promedio de ~MXN $4,000,000 para un bloque de 6.
+# Modelo por sitio (hub de 360kW), a 9 años — vida media asumida de un cargador EV.
+# Fuente: modelo de negocios del proveedor (Excel "Modelo de Negocios", 9 años).
 BUSINESS_CASE = {
-    "currency": "MXN",
-    "reference_total_capex": 4_000_000,   # costo total de referencia…
-    "reference_stations": 6,              # …para 6 estaciones (punto de partida)
-    # Descomposición del CapEx (shares suman 1.0). scaling: por estación o fijo por sitio.
-    "capex_components": {
-        "equipo_cargadores":    {"share": 0.45, "scaling": "per_station", "desc": "Hardware de cargadores"},
-        "obra_civil_electrica": {"share": 0.25, "scaling": "per_station", "desc": "Obra civil, transformador, cableado"},
-        "mano_de_obra_local":   {"share": 0.10, "scaling": "per_station", "desc": "Instalación (mano de obra local)"},
-        "plataforma_setup":     {"share": 0.05, "scaling": "fixed",       "desc": "Integración de plataforma (setup)"},
-        "permisos_ingenieria":  {"share": 0.05, "scaling": "fixed",       "desc": "Permisos e ingeniería"},
-        "viaticos":             {"share": 0.04, "scaling": "fixed",       "desc": "Viáticos del equipo"},
-        "contingencia":         {"share": 0.06, "scaling": "fixed",       "desc": "Contingencia"},
+    "currency": "USD",
+    "horizon_years": 9,
+    "site_capex_usd": 250_000,   # transformador + cargador + cable + instalación, por sitio
+    "site_capacity_kw": 360,
+    # Utilización esperada año 1..9 (curva del proveedor; meseta desde año 7).
+    "utilization_by_year": [0.23, 0.26, 0.28, 0.32, 0.35, 0.38, 0.40, 0.40, 0.40],
+    "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)
+    "peak_hours_per_day": 12.5,
+    "offpeak_hours_per_day": 11.5,
+    "price_per_kwh_user": 0.46,               # mismo precio en horario punta y valle (así viene calculado en la fuente)
+    "electricity_cost_peak_per_kwh": 0.17,
+    "electricity_cost_offpeak_per_kwh": 0.15,
+    "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada a ambos costos
+    "payment_gateway_pct": 0.0,                # sin costo de pasarela de pago modelado (igual que la fuente)
+    "maintenance_pct": 0.10,                   # % de facturación
+    "platform_pct": 0.13,                      # % de facturación
+    "landlord_profit_share": 0.16,             # resto (84%) es del inversionista
+    # Comisiones de venta por sitio implementado — informativas, no restan del ROI del inversionista
+    # (en la fuente tampoco están conectadas a la hoja de ROI).
+    "commissions": {
+        "vip_pct_of_capex": 0.05,
+        "vendedor_flat_usd": 2_500,
+        "arquitecto_flat_usd": 2_500,
+        "recurring_note": ("Comisión recurrente mensual (0.5% VIP + 0.5% vendedor) solo aplica a "
+                            "clientes con cartera de 100+ sitios; no se calcula por sitio individual."),
     },
-    # OpEx (costos recurrentes)
-    "opex": {
-        "rent_monthly_base": 45_000,            # renta mensual por sitio (se escala por NSE)
-        "maintenance_annual_per_station": 18_000,  # mantenimiento de equipos
-        "platform_monthly_per_station": 1_200,  # renta de plataforma de software
-        "ops_labor_annual_base": 180_000,       # mano de obra de operación (se escala por metro)
-        "insurance_other_annual": 60_000,       # seguros y otros
-    },
-    # Ingresos (para payback / ROI / punto de equilibrio)
-    "revenue": {
-        "base_sessions_per_station_day": 6,     # sesiones/estación/día a utilización plena
-        "util_floor": 0.30,                     # piso de utilización (sitio de bajo score)
-        "kwh_per_session": 22,
-        "price_per_kwh_user": 8.5,              # precio de carga al usuario (MXN/kWh)
-    },
-    # Costo del servicio (parametrizable): costo variable de proveer la carga,
-    # aparte de la electricidad — comisión de pago, red/roaming, soporte, etc.
-    # Afecta el margen de contribución y por tanto el punto de equilibrio.
-    "service": {
-        "cost_per_kwh": 1.0,        # MXN/kWh (variable)
-        "cost_per_session": 0.0,    # MXN/sesión (variable, opcional)
-    },
-    # Costo de electricidad (MXN/kWh) — varía por código postal / región
-    "electricity_default": 3.2,
-    "electricity_by_cp2": {  # prefijo de CP (2 dígitos) → tarifa
-        "64": 3.4, "65": 3.4, "66": 3.4, "67": 3.4,            # Nuevo León
-        "44": 3.1, "45": 3.1, "46": 3.1, "47": 3.1,            # Jalisco
-        "01": 3.6, "02": 3.6, "03": 3.6, "04": 3.6, "05": 3.6, "06": 3.6,
-        "07": 3.6, "08": 3.6, "09": 3.6, "10": 3.6, "11": 3.6, "12": 3.6,
-        "13": 3.6, "14": 3.6, "15": 3.6, "16": 3.6,            # CDMX
-        "97": 3.3,                                             # Yucatán (Mérida)
-        "58": 3.2, "59": 3.2,                                  # Michoacán (Morelia)
-        "37": 3.2,                                             # Guanajuato (San Miguel Allende)
-    },
-    "electricity_by_metro": {"Monterrey": 3.4, "Guadalajara": 3.1, "CDMX": 3.6,
-                             "Mérida": 3.3, "Morelia": 3.2, "San Miguel de Allende": 3.2},
-    "labor_by_metro": {"Monterrey": 1.05, "Guadalajara": 1.00, "CDMX": 1.15,
-                       "Mérida": 0.95, "Morelia": 0.95, "San Miguel de Allende": 1.00},
-    "rent_ses_base": 0.60,   # renta_mult = rent_ses_base + índice_NSE (NSE alto → renta más cara)
-    "horizon_years": 5,
 }
 
 # --- Lista semilla curada de centros comerciales (candidatos greenfield) ---

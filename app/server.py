@@ -87,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "observations": e.obs.items})
             if path == "/api/config":
                 return self._send(200, {"weights": config.WEIGHTS,
-                                        "station_block": config.STATION_BLOCK,
+                                        "max_sites": config.MAX_BLOCKS,
                                         "default_radius_km": config.DEFAULT_RADIUS_KM,
                                         "metros": list(config.METROS.keys())})
             if path == "/api/analyze":
@@ -137,18 +137,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(400, f"cuerpo inválido: {e}")
 
     def _handle_business(self, data):
-        """Ajusta supuestos del business case en vivo (CapEx base, precio, sesiones…)."""
+        """Ajusta supuestos del business case en vivo (CapEx por sitio, precio, tarifas…)."""
         bc = config.BUSINESS_CASE
-        if "reference_total_capex" in data:
-            bc["reference_total_capex"] = max(0, float(data["reference_total_capex"]))
-        rev = data.get("revenue", {})
-        for k in ("price_per_kwh_user", "base_sessions_per_station_day", "kwh_per_session"):
-            if k in rev:
-                bc["revenue"][k] = float(rev[k])
-        svc = data.get("service", {})
-        for k in ("cost_per_kwh", "cost_per_session"):
-            if k in svc:
-                bc.setdefault("service", {})[k] = float(svc[k])
+        if "site_capex_usd" in data and data["site_capex_usd"] is not None:
+            bc["site_capex_usd"] = max(0, float(data["site_capex_usd"]))
+        for k in ("price_per_kwh_user", "electricity_cost_peak_per_kwh",
+                  "electricity_cost_offpeak_per_kwh", "maintenance_pct",
+                  "platform_pct", "payment_gateway_pct", "landlord_profit_share"):
+            if k in data and data[k] is not None:
+                bc[k] = float(data[k])
         return self._send(200, {"business_case": bc})
 
     def _handle_weights(self, data):

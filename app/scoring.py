@@ -3,7 +3,7 @@ Motor de recomendación de ubicaciones para cargadores EV.
 
 Dos capacidades:
   1) analyze_point(lat, lon, radius) -> "¿aquí es buena ubicación?" (API móvil)
-  2) generate_candidates(metro) -> sugerencias de dónde instalar bloques de 6.
+  2) generate_candidates(metro) -> sugerencias de dónde instalar sitios de carga.
 
 El modelo es transparente y tunable vía app/config.py.
 """
@@ -52,30 +52,31 @@ class Engine:
 
     def sensitivity(self, lat, lon, radius=None, cp=None, prices=None, services=None):
         """Matriz de punto de equilibrio (meses) variando precio de carga (filas)
-        y costo del servicio (columnas). Para decidir el pricing óptimo por sitio."""
+        y costo de servicio agregado (columnas, % de facturación). Para decidir el
+        pricing óptimo por sitio."""
         a = self.analyze_point(lat, lon, radius, cp)
-        stations = a["recommended_stations"]
+        sites = a["recommended_sites"]
         ctx0 = {"metro": a["query"]["metro"], "ses_index": a["ses_proxy"],
                 "util": a["score"] / 100.0, "cp": cp}
-        prices = prices or [6, 7, 8, 9, 10, 11, 12]
-        services = services or [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+        prices = prices or [0.30, 0.36, 0.42, 0.46, 0.52, 0.58, 0.65]
+        services = services or [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
         grid = []
         for p in prices:
             row = []
             for s in services:
-                b = business.compute(stations, {**ctx0, "price_per_kwh": p,
-                                                "service_cost_per_kwh": s})
+                b = business.compute(sites, {**ctx0, "price_per_kwh": p,
+                                             "service_opex_pct": s})
                 row.append(b["break_even_months"])
             grid.append(row)
         bc = config.BUSINESS_CASE
+        current_service_pct = bc["payment_gateway_pct"] + bc["maintenance_pct"] + bc["platform_pct"]
         return {
-            "stations": stations,
+            "sites": sites,
             "prices": prices, "services": services, "grid": grid,
-            "current": {"price": bc["revenue"]["price_per_kwh_user"],
-                        "service": bc.get("service", {}).get("cost_per_kwh", 0.0)},
+            "current": {"price": bc["price_per_kwh_user"], "service": current_service_pct},
             "site": {"score": a["score"], "verdict": a["verdict"],
                      "metro": a["query"]["metro"],
-                     "electricity": a["business_case"]["local_factors"]["electricity_mxn_kwh"]},
+                     "electricity": a["business_case"]["local_factors"]["electricity_peak_usd_kwh"]},
         }
 
     def obs_in_radius(self, lat, lon, r):
@@ -265,12 +266,11 @@ class Engine:
         total = round(total, 1)
 
         verdict, verdict_msg = self._verdict(total)
-        blocks = self._recommend_blocks(sub)
-        stations = blocks * config.STATION_BLOCK
+        sites = self._recommend_sites(sub)
 
-        # business case para las estaciones recomendadas
-        biz = business.compute(stations, {"metro": metro, "ses_index": ses,
-                                          "util": total / 100.0, "cp": cp})
+        # business case para los sitios recomendados
+        biz = business.compute(sites, {"metro": metro, "ses_index": ses,
+                                       "util": total / 100.0, "cp": cp})
 
         insights_txt = self._insights_text(metro, state_key, veh, sub, npub, ntesla, ses_ctx)
         if obs_near:
@@ -295,8 +295,7 @@ class Engine:
             "score": total,
             "verdict": verdict,
             "verdict_msg": verdict_msg,
-            "recommended_stations": stations,
-            "recommended_blocks": blocks,
+            "recommended_sites": sites,
             "subscores": sub,
             "weights": W,
             "business_case": biz,
@@ -461,7 +460,7 @@ class Engine:
         for c in cands:
             a = self.analyze_point(c["lat"], c["lon"])
             scored.append({**c, "score": a["score"], "verdict": a["verdict"],
-                           "recommended_stations": a["recommended_stations"],
+                           "recommended_sites": a["recommended_sites"],
                            "metro": a["query"]["metro"],
                            "ev_est": a["estimation"]["ev_est"],
                            "public_chargers": a["chargers"]["public"],
@@ -487,7 +486,7 @@ class Engine:
                 return name, msg
         return "BAJA", ""
 
-    def _recommend_blocks(self, sub):
+    def _recommend_sites(self, sub):
         blocks = 1
         if sub["demand"] > 50: blocks += 1
         if sub["gap"] > 70: blocks += 1

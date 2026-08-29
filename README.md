@@ -1,6 +1,6 @@
 # EV Siting MX — Recomendador de ubicaciones para cargadores EV
 
-Demo local que sugiere **dónde instalar bloques de 6 estaciones de carga** para
+Demo local que sugiere **dónde instalar sitios de carga** (hubs de 360kW) para
 autos eléctricos en México (foco: Monterrey y Guadalajara), y que responde la
 pregunta de la app móvil: **"¿aquí es una buena ubicación?"** con estadísticas
 locales y a 5 km a la redonda.
@@ -109,7 +109,7 @@ Score final 0–100 = suma ponderada de 5 sub-scores:
 | **retail_anchor** | 0.12 | Cercanía a mall / dining / grocery. |
 | **tesla_opportunity** | 0.10 | Sitio Tesla-only → oportunidad multi-estándar. |
 
-**Estaciones recomendadas** = múltiplo de 6 (1–4 bloques) según demanda, brecha y NSE.
+**Sitios recomendados** = 1–4 (cada uno un hub de 360kW) según demanda, brecha y NSE.
 
 **Veredicto**: EXCELENTE ≥75 · BUENA ≥60 · MODERADA ≥45 · BAJA <45.
 
@@ -119,33 +119,31 @@ un *potencial por estacionamiento*: `cajones × penetración_EV × rotación`
 (`PARKING_DEMAND_TURNOVER`, def. 4). Así un lote de 5,000 cajones pesa más que uno
 de 500 en la misma zona. Se reporta en `estimation.parking_ev_potential`.
 
-### Business case (CapEx / OpEx / payback / ROI)
-Cada evaluación calcula el caso de negocio para las estaciones recomendadas
-(`app/business.py`, tunable en `config.BUSINESS_CASE`). Punto de partida:
-**~MXN $4,000,000 total por bloque de 6**.
+### Business case (CapEx / OpEx / payback / ROI a 9 años)
+Cada evaluación calcula el caso de negocio para los sitios recomendados
+(`app/business.py`, tunable en `config.BUSINESS_CASE`), a partir del modelo de
+negocios del proveedor: un sitio = hub de 360kW, **CapEx $250,000 USD**, proyectado
+a **9 años** (vida media asumida de un cargador EV).
 
-- **CapEx** (escala por estación + fijos): equipo, obra civil/eléctrica, mano de obra local, plataforma (setup), permisos/ingeniería, viáticos, contingencia.
-- **OpEx anual**: **electricidad** (tarifa MXN/kWh por **código postal**/región), **renta** (escala con **NSE**), **mantenimiento** de equipos, **renta de plataforma**, **mano de obra** de operación (escala por metro), seguros/otros.
-- **Costo del servicio (parametrizable)**: costo variable de proveer la carga aparte de la electricidad (comisión de pago, red/roaming, soporte), en MXN/kWh y/o MXN/sesión (`config.BUSINESS_CASE["service"]`). Reduce el margen de contribución.
-- **Ingresos / rentabilidad**: energía anual × precio al usuario; la **utilización** se liga al score del sitio.
+- **CapEx**: $250,000 USD por sitio (transformador + cargador + cable + instalación); escala linealmente con el número de sitios.
+- **Utilización esperada**: curva año 1→9 (23%→40%, meseta desde el año 7), modulada por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
+- **Energía y costo de electricidad**: split horario **punta/valle** (12.5h/11.5h), con tarifas distintas y 10% de pérdida eléctrica incluida.
+- **OpEx**: electricidad + pasarela de pago + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
+- **Reparto de utilidad**: 16% dueño del local / 84% inversionista.
+- **Comisiones de venta** (VIP/Vendedor/Arquitecto): pago único informativo al implementar el sitio — no se restan del ROI del inversionista (tampoco lo estaban en la fuente).
 
-**KPI principal — Punto de equilibrio (meses):** `break_even_months = CapEx / utilidad_mensual`.
-Además se calcula el **equilibrio operativo** (`operational_break_even`): sesiones/kWh
-al mes para cubrir los costos fijos con el margen de contribución
-(`precio − electricidad − costo_servicio`), y su % sobre el volumen proyectado.
-También se reportan `payback_years` y `roi`.
+**KPI principal — Payback (años/meses):** primer año en que la utilidad acumulada del
+inversionista (ingresos − OpEx − % local − CapEx) cruza a positivo. También se
+reporta `roi` a 9 años y el flujo año por año (`years`).
 
 **Análisis de sensibilidad (pricing óptimo):** `GET /api/sensitivity?lat=&lon=&radius=&cp=`
-devuelve una matriz de punto de equilibrio (meses) variando el **precio de carga**
-(filas) × **costo del servicio** (columnas), manteniendo fijos CapEx, electricidad
-(por CP), renta (NSE) y utilización del sitio. En la UI se muestra como un **heatmap**
-(verde ≤36m → rojo >120m/∞) con el punto operativo actual marcado, para decidir el
-precio de carga óptimo por sitio de un vistazo.
+devuelve una matriz de meses-para-payback variando el **precio de carga** (USD/kWh,
+filas) × **costo de servicio agregado** (% de facturación, columnas), manteniendo
+fijos CapEx, electricidad y utilización del sitio. En la UI se muestra como un
+**heatmap** (verde ≤36m → rojo >120m/∞) con el punto operativo actual marcado.
 
-Costos variables por ubicación: la electricidad se toma del **CP** (parámetro
-`cp` en `/api/analyze` o el campo en la UI), la renta del **NSE** del polígono, y
-la mano de obra de la **metrópoli**. Ajustables en vivo con `POST /api/business`
-o en la pestaña **Ajustes**. Los candidatos muestran **CapEx y payback** por sitio.
+Ajustable en vivo con `POST /api/business` o en la pestaña **Ajustes**. Los
+candidatos muestran **CapEx y payback** por sitio.
 
 ### Nivel socioeconómico por polígonos (NSE)
 El sub-score **ses** usa polígonos NSE reales vía point-in-polygon:
@@ -189,7 +187,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/insights` | Constantes de reportes (marca→NSE, precios, carga en casa). |
 | GET | `/api/nse` | Polígonos NSE (GeoJSON) para el mapa. |
 | GET | `/api/config` | Pesos y parámetros vigentes. |
-| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `cp` = código postal para tarifa eléctrica) |
+| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `cp` se acepta por compatibilidad pero ya no afecta el cálculo) |
 | GET | `/api/candidates?metro=&top=` | Sugerencias de instalación rankeadas. |
 | GET | `/api/chargers?metro=` | Cargadores para el mapa. |
 | GET | `/api/armadora-nse` | Cruce derivado marca → segmento/NSE/precio/carga-en-casa. |
@@ -199,7 +197,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/observations` | Lista observaciones de campo. |
 | POST | `/api/observations` | Agrega una observación (valida; 422 si inválida). |
 | GET | `/api/business-config` | Supuestos del business case. |
-| POST | `/api/business` | Ajusta CapEx base / precio / costo de servicio / sesiones en vivo. |
+| POST | `/api/business` | Ajusta CapEx por sitio / precio / tarifas de electricidad / reparto en vivo. |
 | GET | `/api/sensitivity?lat=&lon=&radius=&cp=` | Matriz de equilibrio (meses) precio × costo de servicio. |
 
 Ejemplo:
