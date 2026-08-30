@@ -245,18 +245,21 @@ class Engine:
         else:
             retail_anchor_score = max(0, 100 - anchor_d / radius_km * 100)
 
-        # descripción del ancla comercial/oficinas más cercana, para la narrativa (no afecta el score)
+        # descripción del ancla comercial/oficinas más cercana, para la narrativa (no afecta el score).
+        # Nunca cita un ancla a más de MAX_ANCHOR_DESC_KM — más allá de eso no es realmente "cercana".
+        MAX_ANCHOR_DESC_KM = 40
         office_obs = min(((s, d) for s, d in obs_near if s.get("site_type") == "corporate"),
                          key=lambda x: x[1], default=None)
-        if seed_near is not None and anchor_d is not None and abs(seed_near[1] - anchor_d) < 1e-9:
+        if seed_near is not None and anchor_d is not None and abs(seed_near[1] - anchor_d) < 1e-9 \
+                and seed_near[1] <= MAX_ANCHOR_DESC_KM:
             anchor_desc = f"El ancla comercial más cercana es {seed_near[0]['name']}, a ~{round(seed_near[1], 2)}km"
-        elif office_obs is not None:
+        elif office_obs is not None and office_obs[1] <= MAX_ANCHOR_DESC_KM:
             anchor_desc = (f"El corporativo/oficinas más cercano registrado en campo es "
                            f"{office_obs[0]['name']}, a ~{round(office_obs[1], 2)}km")
-        elif anchor_d is not None:
+        elif anchor_d is not None and anchor_d <= MAX_ANCHOR_DESC_KM:
             anchor_desc = f"Hay un ancla comercial/retail a ~{round(anchor_d, 2)}km"
         else:
-            anchor_desc = "no se detectó un ancla comercial u oficinas cercanas en las fuentes disponibles"
+            anchor_desc = "no se detectó un ancla comercial u oficinas cercanas (dentro de 40km) en las fuentes disponibles"
 
         # oportunidad Tesla: hay Tesla pero poca carga pública multi-estándar
         ntesla = len(tesla)
