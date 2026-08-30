@@ -7,9 +7,8 @@ sin tocar la lógica del motor de scoring.
 # --- Radio de análisis por defecto (la app móvil pregunta "a la redonda") ---
 DEFAULT_RADIUS_KM = 5.0
 
-# --- Múltiplos de estaciones a recomendar según demanda ---
-STATION_BLOCK = 6
-MAX_BLOCKS = 4  # hasta 24 estaciones
+# --- Unidad de despliegue: siempre 1 set de 6 cargadores (6 autos simultáneos) ---
+# No se recomiendan sitios/sets adicionales aunque la demanda sea alta.
 
 # --- Pesos del score de idoneidad (suman 1.0). Tunables. ---
 WEIGHTS = {
@@ -60,64 +59,126 @@ VEHICLE_MODEL = {
     "state_adoption_boost_max": 2.5,
     # Multiplicador por NSE (proxy local): NSE alto => más EVs.
     "ses_boost_max": 2.0,
+    # % de crecimiento anual del parque EV+PHEV — alimenta la curva de utilización
+    # a 9 años del business case (ver BUSINESS_CASE.utilization_ceiling_pct).
+    # Default calibrado para reproducir de cerca la curva original del proveedor (23%→40%).
+    "ev_fleet_growth_pct_yoy": 0.097,
 }
 
 # --- Business case: costos, ingresos y payback (todo tunable) ---
-# Punto de partida: costo total promedio de ~MXN $4,000,000 para un bloque de 6.
+# Siempre 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos cargando simultáneamente),
+# a 9 años — vida media asumida de un cargador EV. No se proponen sets adicionales.
+# Fuente: modelo de negocios del proveedor (Excel "Modelo de Negocios", 9 años).
 BUSINESS_CASE = {
-    "currency": "MXN",
-    "reference_total_capex": 4_000_000,   # costo total de referencia…
-    "reference_stations": 6,              # …para 6 estaciones (punto de partida)
-    # Descomposición del CapEx (shares suman 1.0). scaling: por estación o fijo por sitio.
-    "capex_components": {
-        "equipo_cargadores":    {"share": 0.45, "scaling": "per_station", "desc": "Hardware de cargadores"},
-        "obra_civil_electrica": {"share": 0.25, "scaling": "per_station", "desc": "Obra civil, transformador, cableado"},
-        "mano_de_obra_local":   {"share": 0.10, "scaling": "per_station", "desc": "Instalación (mano de obra local)"},
-        "plataforma_setup":     {"share": 0.05, "scaling": "fixed",       "desc": "Integración de plataforma (setup)"},
-        "permisos_ingenieria":  {"share": 0.05, "scaling": "fixed",       "desc": "Permisos e ingeniería"},
-        "viaticos":             {"share": 0.04, "scaling": "fixed",       "desc": "Viáticos del equipo"},
-        "contingencia":         {"share": 0.06, "scaling": "fixed",       "desc": "Contingencia"},
+    "currency": "USD",
+    "horizon_years": 9,
+    "site_capex_usd": 250_000,   # transformador + 6 cargadores + cable + instalación, el set completo
+    "site_capacity_kw": 360,     # 6 cargadores × ~60kW
+    "chargers_per_site": 6,
+    # Curva de utilización año 1..9: arranca en utilization_year1_pct y crece cada año
+    # al ritmo de VEHICLE_MODEL.ev_fleet_growth_pct_yoy, con tope en utilization_ceiling_pct
+    # (capacidad física realista del set de 6 cargadores). Reemplaza la lista fija original
+    # del proveedor (23%→40%) por una fórmula ligada al crecimiento real del parque EV.
+    "utilization_year1_pct": 0.23,
+    "utilization_ceiling_pct": 0.40,
+    "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)
+    "price_per_kwh_user": 0.46,               # mismo precio en los 3 periodos (así viene calculado en la fuente)
+    "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada al costo de energía
+    "bank_commission_pct": 0.0,                # comisión bancaria/pasarela de pago, % de facturación (sin costo en la fuente)
+    "maintenance_pct": 0.10,                   # % de facturación
+    "platform_pct": 0.13,                      # % de facturación
+    "landlord_profit_share": 0.16,             # resto (84%) es del inversionista
+    "inflation_pct": 0.0,                      # inflación anual nominal: escala precio y costo de electricidad por igual
+    "discount_rate_pct": 0.12,                 # tasa de descuento para NPV (WACC / tasa mínima esperada, asunción — ajustable)
+    "residual_value_pct": 0.20,                # valor residual del hardware al año 9, % del CapEx, para el inversionista
+    # Comisiones de venta por sitio implementado — informativas, no restan del ROI del inversionista
+    # (en la fuente tampoco están conectadas a la hoja de ROI).
+    "commissions": {
+        "vip_pct_of_capex": 0.05,
+        "vendedor_flat_usd": 2_500,
+        "arquitecto_flat_usd": 2_500,
+        "recurring_note": ("Comisión recurrente mensual (0.5% VIP + 0.5% vendedor) solo aplica a "
+                            "clientes con cartera de 100+ sitios; no se calcula por sitio individual."),
     },
-    # OpEx (costos recurrentes)
-    "opex": {
-        "rent_monthly_base": 45_000,            # renta mensual por sitio (se escala por NSE)
-        "maintenance_annual_per_station": 18_000,  # mantenimiento de equipos
-        "platform_monthly_per_station": 1_200,  # renta de plataforma de software
-        "ops_labor_annual_base": 180_000,       # mano de obra de operación (se escala por metro)
-        "insurance_other_annual": 60_000,       # seguros y otros
+}
+
+# --- Tarifa eléctrica real por ubicación (CFE, tarifa GDMTH — Gran Demanda Media Tensión ---
+# Horaria) para consumo comercial/industrial. Reemplaza el supuesto plano anterior.
+# CP -> municipio (data/processed/cp_municipio.json, catálogo SEPOMEX) -> división CFE -> tarifa.
+# Fuente de las 6 divisiones abajo: DOF, "Tarifas finales del Suministro Básico" (boletines
+# 2025-11-28 y 2026-07-31). Cifras en MXN; se convierten a USD con mxn_usd_fx_rate en electricity.py.
+# El catálogo SEPOMEX registra el municipio de CDMX como la alcaldía (no "Ciudad de México"),
+# de ahí las 16 claves explícitas abajo — todas caen en la misma división/DAP (aproximación
+# documentada; CDMX tiene 3 sub-divisiones reales, ver nota más abajo).
+_CDMX_ALCALDIAS = ["Álvaro Obregón", "Azcapotzalco", "Benito Juárez", "Coyoacán",
+                   "Cuajimalpa de Morelos", "Cuauhtémoc", "Gustavo A. Madero", "Iztacalco",
+                   "Iztapalapa", "La Magdalena Contreras", "Miguel Hidalgo", "Milpa Alta",
+                   "Tláhuac", "Tlalpan", "Venustiano Carranza", "Xochimilco"]
+_CDMX_KEYS = [f"{a}|Ciudad de México" for a in _CDMX_ALCALDIAS]
+
+ELECTRICITY = {
+    "mxn_usd_fx_rate": 18.5,  # aproximado — actualizar con el tipo de cambio Banxico vigente
+    # ⚠️ Ventanas horarias sin confirmar con el anexo metodológico CRE/CNE (no está en los
+    # boletines de tarifas) — split genérico ampliamente citado (punta 18-22h, base 00-06h).
+    # Tunable; reemplazar si se consigue el anexo real por división/temporada.
+    "period_hours": {"punta": 4, "intermedia": 14, "base": 6},
+    "divisions": {
+        # punta/intermedia/base: MXN/kWh. demanda_mxn_kw: MXN/kW de capacidad/mes. cargo_fijo: MXN/mes.
+        "Golfo Norte": {"punta": 1.6634, "intermedia": 1.5333, "base": 0.9904,
+                        "demanda_mxn_kw": 444.11, "cargo_fijo_mxn": 502.03,
+                        "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Jalisco": {"punta": 2.1829, "intermedia": 1.9387, "base": 1.0810,
+                    "demanda_mxn_kw": 589.41, "cargo_fijo_mxn": 372.38,
+                    "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        "Peninsular": {"punta": 2.4864, "intermedia": 2.2270, "base": 1.3180,
+                       "demanda_mxn_kw": 516.95, "cargo_fijo_mxn": 421.57,
+                       "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        "Centro Occidente": {"punta": 2.0412, "intermedia": 1.8132, "base": 1.0206,
+                             "demanda_mxn_kw": 532.42, "cargo_fijo_mxn": 252.50,
+                             "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Bajío": {"punta": 2.0620, "intermedia": 1.8107, "base": 1.0228,
+                  "demanda_mxn_kw": 475.04, "cargo_fijo_mxn": 427.19,
+                  "source": "DOF 2026-07-31", "as_of": "2026-07"},
+        "Valle de México Centro": {"punta": 2.2908, "intermedia": 1.9601, "base": 1.1823,
+                                    "demanda_mxn_kw": 496.78, "cargo_fijo_mxn": 466.83,
+                                    "source": "DOF 2025-11-28", "as_of": "2025-11"},
+        # Fallback para CP fuera de las 6 divisiones confirmadas: promedio simple de las 6 de arriba.
+        # No es una tarifa real de ninguna división — se marca explícitamente como no confirmada.
+        "Nacional (promedio, sin confirmar)": {"punta": 2.1211, "intermedia": 1.8805, "base": 1.1025,
+                                                "demanda_mxn_kw": 509.12, "cargo_fijo_mxn": 407.08,
+                                                "source": "promedio de las 6 divisiones confirmadas",
+                                                "as_of": None},
     },
-    # Ingresos (para payback / ROI / punto de equilibrio)
-    "revenue": {
-        "base_sessions_per_station_day": 6,     # sesiones/estación/día a utilización plena
-        "util_floor": 0.30,                     # piso de utilización (sitio de bajo score)
-        "kwh_per_session": 22,
-        "price_per_kwh_user": 8.5,              # precio de carga al usuario (MXN/kWh)
+    # Municipio -> división. Clave "Municipio|Estado" (coincide con el catálogo SEPOMEX).
+    "municipio_division": {
+        "Monterrey|Nuevo León": "Golfo Norte",
+        "Guadalajara|Jalisco": "Jalisco",
+        "Mérida|Yucatán": "Peninsular",
+        "Morelia|Michoacán de Ocampo": "Centro Occidente",  # SEPOMEX usa el nombre oficial completo
+        "San Miguel de Allende|Guanajuato": "Bajío",
+        # CDMX tiene 3 sub-divisiones (Centro/Norte/Sur, ±5-8% entre sí); "Centro" es el default
+        # documentado — afinar por alcaldía es un refinamiento futuro.
+        **{k: "Valle de México Centro" for k in _CDMX_KEYS},
     },
-    # Costo del servicio (parametrizable): costo variable de proveer la carga,
-    # aparte de la electricidad — comisión de pago, red/roaming, soporte, etc.
-    # Afecta el margen de contribución y por tanto el punto de equilibrio.
-    "service": {
-        "cost_per_kwh": 1.0,        # MXN/kWh (variable)
-        "cost_per_session": 0.0,    # MXN/sesión (variable, opcional)
+    # DAP (Derecho de Alumbrado Público): lo fija cada municipio, no CFE. A escala de consumo
+    # comercial (~360kW) casi siempre es marginal frente al costo de energía/demanda de arriba.
+    # type: "none" (confirmado que no aplica) | "flat_mxn_month" | "pct_of_energy_cost" |
+    # "pct_of_energy_cost_capped" (con tope en pesos/mes). Sin entrada = sin confirmar -> no se aplica.
+    "municipio_dap": {
+        "Guadalajara|Jalisco": {"type": "none", "source": "Ley de Ingresos Guadalajara 2026 (confirmado, sin DAP)"},
+        **{k: {"type": "none", "source": "Código Fiscal CDMX (confirmado, sin DAP)"} for k in _CDMX_KEYS},
+        "Morelia|Michoacán de Ocampo": {"type": "flat_mxn_month", "amount_mxn": 25.00,
+                                        "source": "Ley de Ingresos Morelia 2026, Art. 18"},
+        "San Miguel de Allende|Guanajuato": {"type": "pct_of_energy_cost_capped", "pct": 0.12,
+                                            "cap_mxn_month": 1111.09,
+                                            "source": "Ley de Ingresos SMA 2026, Arts. 32/56"},
+        "Mérida|Yucatán": {"type": "pct_of_energy_cost", "pct": 0.05,
+                          "source": ("Ley de Ingresos Mérida 2026, Arts. 104-109 — tope legal; el monto "
+                                     "real es per-cápita y probablemente menor, no reproducible sin el "
+                                     "padrón de usuarios de CFE. Se usa el tope como aproximación conservadora.")},
+        # Monterrey: sin confirmar (no se localizó la Ley de Ingresos estatal 2026 de NL) — sin
+        # entrada = no se aplica DAP para este municipio hasta tener el dato real.
     },
-    # Costo de electricidad (MXN/kWh) — varía por código postal / región
-    "electricity_default": 3.2,
-    "electricity_by_cp2": {  # prefijo de CP (2 dígitos) → tarifa
-        "64": 3.4, "65": 3.4, "66": 3.4, "67": 3.4,            # Nuevo León
-        "44": 3.1, "45": 3.1, "46": 3.1, "47": 3.1,            # Jalisco
-        "01": 3.6, "02": 3.6, "03": 3.6, "04": 3.6, "05": 3.6, "06": 3.6,
-        "07": 3.6, "08": 3.6, "09": 3.6, "10": 3.6, "11": 3.6, "12": 3.6,
-        "13": 3.6, "14": 3.6, "15": 3.6, "16": 3.6,            # CDMX
-        "97": 3.3,                                             # Yucatán (Mérida)
-        "58": 3.2, "59": 3.2,                                  # Michoacán (Morelia)
-        "37": 3.2,                                             # Guanajuato (San Miguel Allende)
-    },
-    "electricity_by_metro": {"Monterrey": 3.4, "Guadalajara": 3.1, "CDMX": 3.6,
-                             "Mérida": 3.3, "Morelia": 3.2, "San Miguel de Allende": 3.2},
-    "labor_by_metro": {"Monterrey": 1.05, "Guadalajara": 1.00, "CDMX": 1.15,
-                       "Mérida": 0.95, "Morelia": 0.95, "San Miguel de Allende": 1.00},
-    "rent_ses_base": 0.60,   # renta_mult = rent_ses_base + índice_NSE (NSE alto → renta más cara)
-    "horizon_years": 5,
 }
 
 # --- Lista semilla curada de centros comerciales (candidatos greenfield) ---

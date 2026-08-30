@@ -31,7 +31,7 @@ def engine():
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "EVSiting/1.0"
+    server_version = "CSEnergy/1.0"
 
     # ---------- helpers ----------
     def _send(self, code, body, ctype="application/json; charset=utf-8"):
@@ -79,7 +79,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/demand":
                 return self._send(200, engine().demand)
             if path == "/api/business-config":
-                return self._send(200, config.BUSINESS_CASE)
+                return self._send(200, {**config.BUSINESS_CASE,
+                                        "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"],
+                                        "mxn_usd_fx_rate": config.ELECTRICITY["mxn_usd_fx_rate"],
+                                        "period_hours": config.ELECTRICITY["period_hours"]})
             if path == "/api/observations":
                 e = engine()
                 return self._send(200, {"count": len(e.obs.items),
@@ -87,7 +90,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "observations": e.obs.items})
             if path == "/api/config":
                 return self._send(200, {"weights": config.WEIGHTS,
-                                        "station_block": config.STATION_BLOCK,
+                                        "charger_set_size": 6,
                                         "default_radius_km": config.DEFAULT_RADIUS_KM,
                                         "metros": list(config.METROS.keys())})
             if path == "/api/analyze":
@@ -137,19 +140,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._err(400, f"cuerpo inválido: {e}")
 
     def _handle_business(self, data):
-        """Ajusta supuestos del business case en vivo (CapEx base, precio, sesiones…)."""
+        """Ajusta supuestos del business case en vivo (CapEx por sitio, precio, tarifas…)."""
         bc = config.BUSINESS_CASE
-        if "reference_total_capex" in data:
-            bc["reference_total_capex"] = max(0, float(data["reference_total_capex"]))
-        rev = data.get("revenue", {})
-        for k in ("price_per_kwh_user", "base_sessions_per_station_day", "kwh_per_session"):
-            if k in rev:
-                bc["revenue"][k] = float(rev[k])
-        svc = data.get("service", {})
-        for k in ("cost_per_kwh", "cost_per_session"):
-            if k in svc:
-                bc.setdefault("service", {})[k] = float(svc[k])
-        return self._send(200, {"business_case": bc})
+        if "site_capex_usd" in data and data["site_capex_usd"] is not None:
+            bc["site_capex_usd"] = max(0, float(data["site_capex_usd"]))
+        for k in ("price_per_kwh_user", "maintenance_pct", "platform_pct",
+                  "bank_commission_pct", "landlord_profit_share", "inflation_pct",
+                  "discount_rate_pct", "residual_value_pct", "utilization_year1_pct",
+                  "utilization_ceiling_pct"):
+            if k in data and data[k] is not None:
+                bc[k] = float(data[k])
+        if "ev_fleet_growth_pct_yoy" in data and data["ev_fleet_growth_pct_yoy"] is not None:
+            config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"] = float(data["ev_fleet_growth_pct_yoy"])
+        if "mxn_usd_fx_rate" in data and data["mxn_usd_fx_rate"] is not None:
+            config.ELECTRICITY["mxn_usd_fx_rate"] = max(0.01, float(data["mxn_usd_fx_rate"]))
+        ph = data.get("period_hours")
+        if ph:
+            for k in ("punta", "intermedia", "base"):
+                if k in ph and ph[k] is not None:
+                    config.ELECTRICITY["period_hours"][k] = float(ph[k])
+        return self._send(200, {"business_case": bc, "vehicle_model": config.VEHICLE_MODEL,
+                                "electricity": config.ELECTRICITY})
 
     def _handle_weights(self, data):
         """Actualiza pesos del scoring en vivo. Se normalizan a suma 1.0."""
@@ -207,7 +218,7 @@ class Handler(BaseHTTPRequestHandler):
 def run(host="127.0.0.1", port=8000):
     engine()  # precarga
     srv = ThreadingHTTPServer((host, port), Handler)
-    print(f"\n  EV Siting demo corriendo en  http://{host}:{port}\n")
+    print(f"\n  CS Energy demo corriendo en  http://{host}:{port}\n")
     print("  API:  /api/analyze?lat=25.625&lon=-100.308")
     print("        /api/candidates?metro=Monterrey")
     print("  Ctrl+C para detener.\n")

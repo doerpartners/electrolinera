@@ -1,6 +1,6 @@
-# EV Siting MX — Recomendador de ubicaciones para cargadores EV
+# CS Energy MX — Recomendador de ubicaciones para cargadores EV
 
-Demo local que sugiere **dónde instalar bloques de 6 estaciones de carga** para
+Demo local que sugiere **dónde instalar un set de 6 cargadores** (6 autos simultáneos) para
 autos eléctricos en México (foco: Monterrey y Guadalajara), y que responde la
 pregunta de la app móvil: **"¿aquí es una buena ubicación?"** con estadísticas
 locales y a 5 km a la redonda.
@@ -25,6 +25,14 @@ Reconstruir datos (cuando lleguen archivos nuevos a `~/Downloads`):
 
 ```bash
 python3 etl/build_dataset.py
+```
+
+Catálogo de códigos postales (CP → municipio, para tarifas eléctricas por ubicación — solo hace
+falta rehacerlo si SEPOMEX actualiza el catálogo; el actual ya está en `data/processed/`):
+
+```bash
+curl -o ~/Downloads/cpdescarga.csv https://www.correosdemexico.gob.mx/datosabiertos/cp/cpdescarga.csv
+python3 etl/build_cp_catalog.py
 ```
 
 ---
@@ -109,7 +117,7 @@ Score final 0–100 = suma ponderada de 5 sub-scores:
 | **retail_anchor** | 0.12 | Cercanía a mall / dining / grocery. |
 | **tesla_opportunity** | 0.10 | Sitio Tesla-only → oportunidad multi-estándar. |
 
-**Estaciones recomendadas** = múltiplo de 6 (1–4 bloques) según demanda, brecha y NSE.
+**Unidad de despliegue** = siempre **1 set de 6 cargadores** (6 autos simultáneos, ~60kW c/u); no se proponen sets adicionales aunque la demanda sea alta.
 
 **Veredicto**: EXCELENTE ≥75 · BUENA ≥60 · MODERADA ≥45 · BAJA <45.
 
@@ -119,33 +127,59 @@ un *potencial por estacionamiento*: `cajones × penetración_EV × rotación`
 (`PARKING_DEMAND_TURNOVER`, def. 4). Así un lote de 5,000 cajones pesa más que uno
 de 500 en la misma zona. Se reporta en `estimation.parking_ev_potential`.
 
-### Business case (CapEx / OpEx / payback / ROI)
-Cada evaluación calcula el caso de negocio para las estaciones recomendadas
-(`app/business.py`, tunable en `config.BUSINESS_CASE`). Punto de partida:
-**~MXN $4,000,000 total por bloque de 6**.
+### Business case (CapEx / OpEx / payback / ROI a 9 años)
+Cada evaluación calcula el caso de negocio para el set fijo de 6 cargadores
+(`app/business.py`, tunable en `config.BUSINESS_CASE`), a partir del modelo de
+negocios del proveedor: 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos
+simultáneos), **CapEx $250,000 USD**, proyectado a **9 años** (vida media
+asumida de un cargador EV). No se proponen sets adicionales por ubicación.
 
-- **CapEx** (escala por estación + fijos): equipo, obra civil/eléctrica, mano de obra local, plataforma (setup), permisos/ingeniería, viáticos, contingencia.
-- **OpEx anual**: **electricidad** (tarifa MXN/kWh por **código postal**/región), **renta** (escala con **NSE**), **mantenimiento** de equipos, **renta de plataforma**, **mano de obra** de operación (escala por metro), seguros/otros.
-- **Costo del servicio (parametrizable)**: costo variable de proveer la carga aparte de la electricidad (comisión de pago, red/roaming, soporte), en MXN/kWh y/o MXN/sesión (`config.BUSINESS_CASE["service"]`). Reduce el margen de contribución.
-- **Ingresos / rentabilidad**: energía anual × precio al usuario; la **utilización** se liga al score del sitio.
+- **CapEx**: $250,000 USD por set de 6 cargadores (transformador + cargadores + cable + instalación).
+- **Utilización esperada**: parte de `utilization_year1_pct` (23%) y crece cada año al ritmo de `VEHICLE_MODEL.ev_fleet_growth_pct_yoy` (% de crecimiento anual del parque EV+PHEV, ~9.7% por defecto) hasta un tope de `utilization_ceiling_pct` (40%) — liga la demanda real proyectada al ROI en vez de una curva fija. Modulada además por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
+- **Energía y costo de electricidad — tarifa real de CFE por ubicación**: `app/electricity.py` resuelve
+  código postal → municipio (catálogo SEPOMEX, `data/processed/cp_municipio.json`, ~32k CPs reales) →
+  división tarifaria de CFE → tarifa **GDMTH** (Gran Demanda Media Tensión Horaria): 3 periodos
+  horarios reales (**punta/intermedia/base**, horas en `config.ELECTRICITY.period_hours` — aproximadas,
+  sin confirmar con el anexo metodológico CRE/CNE) + **cargo por demanda** ($/kW de capacidad
+  contratada, 360kW — a menudo el componente más grande del OpEx eléctrico, ausente en el modelo
+  anterior) + cargo fijo mensual + **DAP** municipal (alumbrado público, fórmula por municipio en
+  `config.ELECTRICITY.municipio_dap`). Cifras reales y fechadas (fuente: DOF) para 6 municipios
+  (Monterrey, Guadalajara, CDMX, Mérida, Morelia, San Miguel de Allende); cualquier otro CP cae a un
+  promedio nacional explícitamente marcado como `"confidence": "promedio nacional (sin confirmar por
+  ubicación)"` — ver `data/electricity_tariffs_reference.xlsx` para la tabla completa con fuentes.
+  MXN convertido a USD vía `mxn_usd_fx_rate` (aproximado, ajustable).
+- **Inflación anual** (`inflation_pct`): escala precio al usuario y costo de electricidad por igual cada año (nominal).
+- **OpEx**: electricidad + comisión bancaria/pasarela de pago (`bank_commission_pct`) + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
+- **Reparto de utilidad**: 16% dueño del local / 84% inversionista.
+- **Valor residual** (`residual_value_pct`, 20% del CapEx por defecto): se suma al flujo del inversionista solo en el año 9.
+- **NPV** (`discount_rate_pct`, 12% por defecto): valor presente neto del flujo del inversionista (CapEx en t=0, utilidad + valor residual año 9), además del payback/ROI simples (sin descontar).
+- **Comisiones de venta** (VIP/Vendedor/Arquitecto): pago único informativo al implementar el sitio — no se restan del ROI del inversionista (tampoco lo estaban en la fuente).
 
-**KPI principal — Punto de equilibrio (meses):** `break_even_months = CapEx / utilidad_mensual`.
-Además se calcula el **equilibrio operativo** (`operational_break_even`): sesiones/kWh
-al mes para cubrir los costos fijos con el margen de contribución
-(`precio − electricidad − costo_servicio`), y su % sobre el volumen proyectado.
-También se reportan `payback_years` y `roi`.
+**KPI principal — Payback (años/meses):** primer año en que la utilidad acumulada del
+inversionista (ingresos − OpEx − % local − CapEx) cruza a positivo. También se
+reporta `roi` a 9 años y el flujo año por año (`years`).
 
 **Análisis de sensibilidad (pricing óptimo):** `GET /api/sensitivity?lat=&lon=&radius=&cp=`
-devuelve una matriz de punto de equilibrio (meses) variando el **precio de carga**
-(filas) × **costo del servicio** (columnas), manteniendo fijos CapEx, electricidad
-(por CP), renta (NSE) y utilización del sitio. En la UI se muestra como un **heatmap**
-(verde ≤36m → rojo >120m/∞) con el punto operativo actual marcado, para decidir el
-precio de carga óptimo por sitio de un vistazo.
+devuelve una matriz de meses-para-payback variando el **precio de carga** (USD/kWh,
+filas) × **costo de servicio agregado** (% de facturación, columnas), manteniendo
+fijos CapEx, electricidad y utilización del sitio. En la UI se muestra como un
+**heatmap** (verde ≤36m → rojo >120m/∞) con el punto operativo actual marcado.
 
-Costos variables por ubicación: la electricidad se toma del **CP** (parámetro
-`cp` en `/api/analyze` o el campo en la UI), la renta del **NSE** del polígono, y
-la mano de obra de la **metrópoli**. Ajustables en vivo con `POST /api/business`
-o en la pestaña **Ajustes**. Los candidatos muestran **CapEx y payback** por sitio.
+Ajustable en vivo con `POST /api/business` o en la pestaña **Ajustes**. Los
+candidatos muestran **CapEx y payback** por sitio.
+
+### Racional narrado de la decisión
+Cada evaluación (`analyze_point`) genera un párrafo narrado (`rationale`, en
+`app/scoring.py::_rationale_narrative`) que sintetiza en prosa el porqué del score:
+comercios/oficinas cercanas, NSE, % de penetración EV local, % de crecimiento de
+adopción EV (nacional, ICCT, vs. el supuesto propio del caso de negocio), la
+correlación precio-NSE de los vehículos, la relación cargadores/EVs vs. la
+referencia sana, y — por separado — los supuestos genéricos del caso de negocio
+que aún no están calibrados por sitio (tasa de descuento NPV, inflación, CapEx,
+tarifa eléctrica, valor residual) junto con oportunidades de mejora no modeladas
+(mano de obra real, renta por m², paneles solares). Se muestra en un panel
+flotante abajo a la derecha del mapa (`#rationale` en `web/index.html`/`app.js`)
+al evaluar cualquier punto.
 
 ### Nivel socioeconómico por polígonos (NSE)
 El sub-score **ses** usa polígonos NSE reales vía point-in-polygon:
@@ -189,7 +223,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/insights` | Constantes de reportes (marca→NSE, precios, carga en casa). |
 | GET | `/api/nse` | Polígonos NSE (GeoJSON) para el mapa. |
 | GET | `/api/config` | Pesos y parámetros vigentes. |
-| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `cp` = código postal para tarifa eléctrica) |
+| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `cp` se acepta por compatibilidad pero ya no afecta el cálculo) |
 | GET | `/api/candidates?metro=&top=` | Sugerencias de instalación rankeadas. |
 | GET | `/api/chargers?metro=` | Cargadores para el mapa. |
 | GET | `/api/armadora-nse` | Cruce derivado marca → segmento/NSE/precio/carga-en-casa. |
@@ -199,7 +233,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/observations` | Lista observaciones de campo. |
 | POST | `/api/observations` | Agrega una observación (valida; 422 si inválida). |
 | GET | `/api/business-config` | Supuestos del business case. |
-| POST | `/api/business` | Ajusta CapEx base / precio / costo de servicio / sesiones en vivo. |
+| POST | `/api/business` | Ajusta CapEx por sitio / precio / tipo de cambio / horas de periodo / reparto / NPV / inflación en vivo. |
 | GET | `/api/sensitivity?lat=&lon=&radius=&cp=` | Matriz de equilibrio (meses) precio × costo de servicio. |
 
 Ejemplo:
@@ -237,18 +271,21 @@ Cada mejora es un cambio de datos/config, no de lógica.
 ev-siting-demo/
 ├── run.py                 # entrypoint
 ├── etl/build_dataset.py   # normaliza fuentes → data/processed/*.json
+├── etl/build_cp_catalog.py # catálogo SEPOMEX → data/processed/cp_municipio.json
 ├── etl/load_nse.py        # ingiere GeoJSON NSE oficial → data/nse_polygons.geojson
 ├── etl/add_observation.py # valida y guarda un levantamiento de campo (JSON)
 ├── etl/examples/samara.json   # observación de ejemplo
 ├── app/observations.py    # esquema + validación + expansión de levantamientos
 ├── app/
-│   ├── config.py          # pesos, umbrales, metros, malls semilla, modelo vehicular
+│   ├── config.py          # pesos, umbrales, metros, malls semilla, modelo vehicular, ELECTRICITY
 │   ├── geo.py             # haversine + índice espacial
 │   ├── scoring.py         # motor: analyze_point() y generate_candidates()
-│   ├── business.py        # business case: CapEx/OpEx/ingresos/payback/ROI
+│   ├── business.py        # business case: CapEx/OpEx/ingresos/payback/ROI/NPV
+│   ├── electricity.py     # tarifa eléctrica real por ubicación (CFE GDMTH + DAP)
 │   ├── observations.py    # levantamientos de campo (esquema + validación)
 │   └── server.py          # API JSON + estáticos (stdlib, sin deps)
 ├── web/                   # frontend: mapa Leaflet + UI de 5 pestañas
 ├── data/nse_polygons.geojson  # zonas NSE (semilla; reemplazable por oficial)
-└── data/processed/        # JSON generado por el ETL
+├── data/electricity_tariffs_reference.xlsx  # tablas de ELECTRICITY con fuentes, para revisión humana
+└── data/processed/        # JSON generado por el ETL (incl. cp_municipio.json)
 ```

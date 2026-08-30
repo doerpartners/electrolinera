@@ -3,7 +3,7 @@ Motor de recomendación de ubicaciones para cargadores EV.
 
 Dos capacidades:
   1) analyze_point(lat, lon, radius) -> "¿aquí es buena ubicación?" (API móvil)
-  2) generate_candidates(metro) -> sugerencias de dónde instalar bloques de 6.
+  2) generate_candidates(metro) -> sugerencias de dónde instalar sitios de carga.
 
 El modelo es transparente y tunable vía app/config.py.
 """
@@ -15,6 +15,7 @@ from .geo import haversine_km, SpatialIndex
 from .nse import NSELayer
 from .observations import ObservationStore, summarize as obs_summarize
 from . import business
+from . import electricity
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROC = os.path.join(os.path.dirname(HERE), "data", "processed")
@@ -52,30 +53,31 @@ class Engine:
 
     def sensitivity(self, lat, lon, radius=None, cp=None, prices=None, services=None):
         """Matriz de punto de equilibrio (meses) variando precio de carga (filas)
-        y costo del servicio (columnas). Para decidir el pricing óptimo por sitio."""
+        y costo de servicio agregado (columnas, % de facturación). Para decidir el
+        pricing óptimo por sitio."""
         a = self.analyze_point(lat, lon, radius, cp)
-        stations = a["recommended_stations"]
+        sites = a["recommended_sites"]
         ctx0 = {"metro": a["query"]["metro"], "ses_index": a["ses_proxy"],
                 "util": a["score"] / 100.0, "cp": cp}
-        prices = prices or [6, 7, 8, 9, 10, 11, 12]
-        services = services or [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+        prices = prices or [0.30, 0.36, 0.42, 0.46, 0.52, 0.58, 0.65]
+        services = services or [0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30]
         grid = []
         for p in prices:
             row = []
             for s in services:
-                b = business.compute(stations, {**ctx0, "price_per_kwh": p,
-                                                "service_cost_per_kwh": s})
+                b = business.compute(sites, {**ctx0, "price_per_kwh": p,
+                                             "service_opex_pct": s})
                 row.append(b["break_even_months"])
             grid.append(row)
         bc = config.BUSINESS_CASE
+        current_service_pct = bc["bank_commission_pct"] + bc["maintenance_pct"] + bc["platform_pct"]
         return {
-            "stations": stations,
+            "sites": sites,
             "prices": prices, "services": services, "grid": grid,
-            "current": {"price": bc["revenue"]["price_per_kwh_user"],
-                        "service": bc.get("service", {}).get("cost_per_kwh", 0.0)},
+            "current": {"price": bc["price_per_kwh_user"], "service": current_service_pct},
             "site": {"score": a["score"], "verdict": a["verdict"],
                      "metro": a["query"]["metro"],
-                     "electricity": a["business_case"]["local_factors"]["electricity_mxn_kwh"]},
+                     "electricity": a["business_case"]["local_factors"]["electricity_punta_usd_kwh"]},
         }
 
     def obs_in_radius(self, lat, lon, r):
@@ -243,6 +245,22 @@ class Engine:
         else:
             retail_anchor_score = max(0, 100 - anchor_d / radius_km * 100)
 
+        # descripción del ancla comercial/oficinas más cercana, para la narrativa (no afecta el score).
+        # Nunca cita un ancla a más de MAX_ANCHOR_DESC_KM — más allá de eso no es realmente "cercana".
+        MAX_ANCHOR_DESC_KM = 40
+        office_obs = min(((s, d) for s, d in obs_near if s.get("site_type") == "corporate"),
+                         key=lambda x: x[1], default=None)
+        if seed_near is not None and anchor_d is not None and abs(seed_near[1] - anchor_d) < 1e-9 \
+                and seed_near[1] <= MAX_ANCHOR_DESC_KM:
+            anchor_desc = f"El ancla comercial más cercana es {seed_near[0]['name']}, a ~{round(seed_near[1], 2)}km"
+        elif office_obs is not None and office_obs[1] <= MAX_ANCHOR_DESC_KM:
+            anchor_desc = (f"El corporativo/oficinas más cercano registrado en campo es "
+                           f"{office_obs[0]['name']}, a ~{round(office_obs[1], 2)}km")
+        elif anchor_d is not None and anchor_d <= MAX_ANCHOR_DESC_KM:
+            anchor_desc = f"Hay un ancla comercial/retail a ~{round(anchor_d, 2)}km"
+        else:
+            anchor_desc = "no se detectó un ancla comercial u oficinas cercanas (dentro de 40km) en las fuentes disponibles"
+
         # oportunidad Tesla: hay Tesla pero poca carga pública multi-estándar
         ntesla = len(tesla)
         non_tesla_public = sum(1 for p, _ in public if not p["tesla"])
@@ -265,12 +283,14 @@ class Engine:
         total = round(total, 1)
 
         verdict, verdict_msg = self._verdict(total)
-        blocks = self._recommend_blocks(sub)
-        stations = blocks * config.STATION_BLOCK
+        sites = 1  # siempre 1 set de 6 cargadores (6 autos simultáneos); no se proponen más
 
-        # business case para las estaciones recomendadas
-        biz = business.compute(stations, {"metro": metro, "ses_index": ses,
-                                          "util": total / 100.0, "cp": cp})
+        # business case para el set de 6 cargadores
+        biz = business.compute(sites, {"metro": metro, "ses_index": ses,
+                                       "util": total / 100.0, "cp": cp})
+
+        rationale = self._rationale_narrative(metro, radius_km, veh, ses_ctx, ses, sub, W, total,
+                                              verdict, npub, ev_per_charger, ntesla, anchor_desc, biz)
 
         insights_txt = self._insights_text(metro, state_key, veh, sub, npub, ntesla, ses_ctx)
         if obs_near:
@@ -295,8 +315,7 @@ class Engine:
             "score": total,
             "verdict": verdict,
             "verdict_msg": verdict_msg,
-            "recommended_stations": stations,
-            "recommended_blocks": blocks,
+            "recommended_sites": sites,
             "subscores": sub,
             "weights": W,
             "business_case": biz,
@@ -324,6 +343,7 @@ class Engine:
                 for p, d in nearby[:8]
             ],
             "insights": insights_txt,
+            "rationale": rationale,
             "disclaimer": "cars_est/ev_est/home_chargers_est son estimaciones modeladas "
                           "(no registro vehicular real). Ver estimation.assumptions.",
         }
@@ -461,7 +481,8 @@ class Engine:
         for c in cands:
             a = self.analyze_point(c["lat"], c["lon"])
             scored.append({**c, "score": a["score"], "verdict": a["verdict"],
-                           "recommended_stations": a["recommended_stations"],
+                           "recommended_sites": a["recommended_sites"],
+                           "chargers": a["business_case"]["chargers"],
                            "metro": a["query"]["metro"],
                            "ev_est": a["estimation"]["ev_est"],
                            "public_chargers": a["chargers"]["public"],
@@ -486,13 +507,6 @@ class Engine:
             if total >= th:
                 return name, msg
         return "BAJA", ""
-
-    def _recommend_blocks(self, sub):
-        blocks = 1
-        if sub["demand"] > 50: blocks += 1
-        if sub["gap"] > 70: blocks += 1
-        if sub["ses"] > 60 and sub["demand"] > 40: blocks += 1
-        return min(blocks, config.MAX_BLOCKS)
 
     def _insights_text(self, metro, state_key, veh, sub, npub, ntesla, ses_ctx):
         ses = ses_ctx["index"]
@@ -519,6 +533,71 @@ class Engine:
             out.append(f"NSE (proxy por señales): {tier} — punto fuera de polígonos NSE cargados.")
         out.append("EVs en México son premium (BEV ~MX$822k vs ICE ~MX$554k), correlacionados con NSE alto.")
         return out
+
+    def _rationale_narrative(self, metro, radius_km, veh, ses_ctx, ses, sub, W, total, verdict,
+                             npub, ev_per_charger, ntesla, anchor_desc, biz):
+        """Párrafo narrado que sintetiza el por qué del score (factores reales del sitio) y,
+        por separado, los supuestos genéricos del caso de negocio que aún no están calibrados
+        por sitio — pensado como panel de transparencia, no como un cálculo nuevo."""
+        bc = config.BUSINESS_CASE
+        mk = self.insights["market_2025"]
+        prices = self.insights["avg_price_mxn"]
+        healthy = config.HEALTHY_EV_PER_PUBLIC_CHARGER
+
+        tier = "alto" if ses > 0.66 else ("medio-alto" if ses > 0.4 else "medio")
+        nse_txt = (f"NSE {ses_ctx['nse']} ({ses_ctx['zone']}, índice {round(ses, 2)})"
+                  if ses_ctx["source"] == "polygon"
+                  else f"NSE proxy nivel {tier} (índice {round(ses, 2)}, sin polígono oficial en el punto)")
+
+        if ev_per_charger is None:
+            gap_txt = ("sin cargadores públicos cercanos, por lo que la brecha de oferta es total "
+                      "y la referencia sana de la industria no aplica todavía")
+        elif ev_per_charger > healthy:
+            gap_txt = (f"{round(ev_per_charger, 1)} autos eléctricos por cada cargador público, por "
+                      f"arriba de la referencia sana de {healthy} — señal de posible saturación y "
+                      f"oportunidad de más oferta")
+        else:
+            gap_txt = (f"{round(ev_per_charger, 1)} autos eléctricos por cada cargador público, por "
+                      f"debajo de la referencia sana de {healthy} — la oferta pública todavía es cómoda")
+        tesla_txt = (f" Hay {ntesla} sitio(s) con carga Tesla cercanos y poca carga multi-estándar, "
+                    f"una oportunidad de complementar la red." if ntesla else "")
+
+        dominant = max(sub, key=lambda k: sub[k] * W[k])
+        dominant_lbl = {"demand": "la demanda estimada de autos eléctricos", "gap": "la brecha entre oferta y demanda pública",
+                        "ses": "el nivel socioeconómico de la zona", "retail_anchor": "la cercanía a un ancla comercial",
+                        "tesla_opportunity": "la oportunidad de complementar sitios Tesla"}[dominant]
+
+        lf = biz["local_factors"]
+        return (
+            f"Esta ubicación obtiene un score de {total}/100 ({verdict}), impulsado principalmente por "
+            f"{dominant_lbl}. En un radio de {radius_km}km{(' en ' + metro) if metro else ''} se estima un "
+            f"parque circulante de ~{veh['cars_est']:,} autos, de los cuales ~{veh['ev_est']:,} son eléctricos "
+            f"o híbridos enchufables (~{veh['ev_penetration_pct']}% de penetración local); a nivel nacional el "
+            f"mercado EV+PHEV crece ~{round(mk['ev_growth_yoy'] * 100)}%/año según ICCT, aunque el caso de "
+            f"negocio usa su propio supuesto de crecimiento "
+            f"({round(config.VEHICLE_MODEL['ev_fleet_growth_pct_yoy'] * 100, 1)}%/año, ajustable en Ajustes) "
+            f"para proyectar la curva de utilización a 9 años. {anchor_desc}. El {nse_txt} es relevante porque "
+            f"los autos eléctricos en México son de gama alta (BEV ~MX${prices['BEV']:,} vs. combustión "
+            f"~MX${prices['ICE']:,}), correlacionados con NSE alto. La oferta pública de carga es de {npub} "
+            f"cargadores en el radio, equivalente a {gap_txt}.{tesla_txt} La tarifa eléctrica usada es la "
+            f"real de CFE para la división \"{lf['electricity_division']}\" ({lf['electricity_confidence']}"
+            f"{', fuente ' + lf['electricity_source'] if lf['electricity_source'] else ''}"
+            f"{', ' + lf['electricity_as_of'] if lf['electricity_as_of'] else ''}): "
+            f"{lf['electricity_punta_usd_kwh']} USD/kWh en punta, {lf['electricity_intermedia_usd_kwh']} en "
+            f"intermedia y {lf['electricity_base_usd_kwh']} en base, más un cargo por demanda de "
+            f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes (capacidad contratada de 360kW) — "
+            f"este cargo por demanda suele ser el componente más grande del costo eléctrico de un set de "
+            f"6 cargadores, no solo el consumo por kWh. Para el resto del caso de negocio se asume una "
+            f"inversión de ${biz['capex_total']:,} USD, una tasa de descuento del "
+            f"{round(biz['discount_rate_pct'] * 100)}% para el NPV, inflación anual del "
+            f"{round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
+            f"{round(bc['residual_value_pct'] * 100)}% del CapEx al año 9 — supuestos genéricos a nivel "
+            f"nacional, no calibrados por sitio. Quedan fuera del modelo, y son oportunidades de mejora con "
+            f"datos reales del sitio: el costo real de mano de obra local (hoy implícito dentro del 10% de "
+            f"mantenimiento), la renta real por metro cuadrado (hoy se usa un reparto fijo de utilidad "
+            f"16%/84% en vez de una renta por m²), y la posibilidad de generación solar en sitio (no modelada), "
+            f"que podría reducir el cargo por demanda y mejorar el payback."
+        )
 
 
 # instancia global (carga perezosa)
