@@ -3,10 +3,13 @@
 Demo local que sugiere **dónde instalar un set de 6 cargadores** (6 autos simultáneos) para
 autos eléctricos en México (foco: Monterrey y Guadalajara), y que responde la
 pregunta de la app móvil: **"¿aquí es una buena ubicación?"** con estadísticas
-locales y a 5 km a la redonda.
+locales, en un radio que se calcula automáticamente (urbano ~6.3km / rural-disperso ~12km): el
+radio normal de circulación diaria más un 50% adicional, por la motivación extra de buscar un
+cargador conveniente que trae tener un auto eléctrico.
 
-Corre **sin dependencias externas** (solo Python 3 estándar + `openpyxl` para el ETL)
-y expone una **API JSON** lista para embeberse en una app móvil.
+Corre con **una sola dependencia externa**, `openpyxl` (para el ETL y para exportar el
+business case a Excel) — el resto es Python 3 estándar — y expone una **API JSON**
+lista para embeberse en una app móvil.
 
 ---
 
@@ -223,7 +226,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 | GET | `/api/insights` | Constantes de reportes (marca→NSE, precios, carga en casa). |
 | GET | `/api/nse` | Polígonos NSE (GeoJSON) para el mapa. |
 | GET | `/api/config` | Pesos y parámetros vigentes. |
-| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `cp` se acepta por compatibilidad pero ya no afecta el cálculo) |
+| GET/POST | `/api/analyze?lat=&lon=&radius=&cp=` | **"¿aquí es buena ubicación?"** (+ business case; `radius` es opcional, se autocalcula urbano/rural si se omite; `cp` se acepta por compatibilidad pero ya no afecta el cálculo) |
 | GET | `/api/candidates?metro=&top=` | Sugerencias de instalación rankeadas. |
 | GET | `/api/chargers?metro=` | Cargadores para el mapa. |
 | GET | `/api/armadora-nse` | Cruce derivado marca → segmento/NSE/precio/carga-en-casa. |
@@ -239,7 +242,7 @@ Todos los endpoints devuelven JSON con `Access-Control-Allow-Origin: *`.
 Ejemplo:
 
 ```bash
-curl "http://127.0.0.1:8000/api/analyze?lat=25.625&lon=-100.308&radius=5"
+curl "http://127.0.0.1:8000/api/analyze?lat=25.625&lon=-100.308"
 ```
 
 Respuesta (extracto): `score`, `verdict`, `recommended_stations`, `subscores`,
