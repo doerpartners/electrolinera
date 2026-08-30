@@ -6,10 +6,11 @@ Endpoints:
   GET  /api/health
   GET  /api/meta
   GET  /api/insights
-  GET  /api/analyze?lat=..&lon=..&radius=..     "¿aquí es buena ubicación?"
-  POST /api/analyze   {lat, lon, radius}
+  GET  /api/analyze?lat=..&lon=..     "¿aquí es buena ubicación?" (radio auto: urbano/rural)
+  POST /api/analyze   {lat, lon}
   GET  /api/candidates?metro=Monterrey&top=15   sugerencias de instalación
   GET  /api/chargers?metro=Monterrey            cargadores para el mapa
+  GET  /api/export/business-case?lat=..&lon=..  descarga el business case completo (.xlsx)
   GET  /                                          frontend (web/index.html)
 """
 import json, os, threading
@@ -17,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from .scoring import get_engine
-from . import config
+from . import config, export_xlsx
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(os.path.dirname(HERE), "web")
@@ -34,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "CSEnergy/1.0"
 
     # ---------- helpers ----------
-    def _send(self, code, body, ctype="application/json; charset=utf-8"):
+    def _send(self, code, body, ctype="application/json; charset=utf-8", extra_headers=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body, ensure_ascii=False).encode("utf-8")
         elif isinstance(body, str):
@@ -45,6 +46,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -91,17 +94,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/config":
                 return self._send(200, {"weights": config.WEIGHTS,
                                         "charger_set_size": 6,
-                                        "default_radius_km": config.DEFAULT_RADIUS_KM,
+                                        "mobility_radius_km": config.MOBILITY_RADIUS_KM,
                                         "metros": list(config.METROS.keys())})
             if path == "/api/analyze":
+                radius = q.get("radius", [None])[0]
                 return self._handle_analyze(
                     float(q["lat"][0]), float(q["lon"][0]),
-                    float(q.get("radius", [config.DEFAULT_RADIUS_KM])[0]),
+                    float(radius) if radius is not None else None,
                     q.get("cp", [None])[0])
             if path == "/api/sensitivity":
+                radius = q.get("radius", [None])[0]
                 return self._send(200, engine().sensitivity(
                     float(q["lat"][0]), float(q["lon"][0]),
-                    float(q.get("radius", [config.DEFAULT_RADIUS_KM])[0]),
+                    float(radius) if radius is not None else None,
                     q.get("cp", [None])[0]))
             if path == "/api/candidates":
                 metro = q.get("metro", [None])[0]
@@ -109,6 +114,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"candidates": engine().generate_candidates(metro, top)})
             if path == "/api/chargers":
                 return self._handle_chargers(q)
+            if path == "/api/export/business-case":
+                radius = q.get("radius", [None])[0]
+                return self._handle_export_business_case(
+                    float(q["lat"][0]), float(q["lon"][0]),
+                    float(radius) if radius is not None else None,
+                    q.get("cp", [None])[0])
             # estáticos
             return self._serve_static(path)
         except (KeyError, ValueError) as e:
@@ -122,8 +133,9 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(n) or b"{}")
             if u.path == "/api/analyze":
+                radius = data.get("radius")
                 return self._handle_analyze(float(data["lat"]), float(data["lon"]),
-                                            float(data.get("radius", config.DEFAULT_RADIUS_KM)),
+                                            float(radius) if radius is not None else None,
                                             data.get("cp"))
             if u.path == "/api/business":
                 return self._handle_business(data)
@@ -183,8 +195,21 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_analyze(self, lat, lon, radius, cp=None):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return self._err(400, "lat/lon fuera de rango")
-        radius = max(0.5, min(radius, 25))
+        if radius is not None:
+            radius = max(0.5, min(radius, 25))  # override explícito (ej. pruebas); si no se manda, se autocalcula
         return self._send(200, engine().analyze_point(lat, lon, radius, cp))
+
+    def _handle_export_business_case(self, lat, lon, radius, cp=None):
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            return self._err(400, "lat/lon fuera de rango")
+        if radius is not None:
+            radius = max(0.5, min(radius, 25))
+        a = engine().analyze_point(lat, lon, radius, cp)
+        xlsx_bytes = export_xlsx.build_business_case_xlsx(a)
+        fname = f"business_case_{lat:.4f}_{lon:.4f}.xlsx".replace("-", "m")
+        return self._send(200, xlsx_bytes,
+                          ctype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                          extra_headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     def _handle_chargers(self, q):
         e = engine()

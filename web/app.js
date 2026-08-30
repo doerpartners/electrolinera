@@ -38,7 +38,6 @@ function init(){
   });
 
   $('#metro').addEventListener('change', onMetro);
-  $('#radius').addEventListener('input', e=>{ $('#radiusVal').textContent = e.target.value; });
   $('#btnCand').addEventListener('click', loadCandidates);
   $('#btnChargers').addEventListener('click', toggleChargers);
   $('#btnNse').addEventListener('click', toggleNse);
@@ -47,8 +46,30 @@ function init(){
   document.querySelectorAll('#tabs button').forEach(b=>
     b.addEventListener('click', ()=>switchTab(b.dataset.tab)));
 
-  loadMeta(); loadNse(); loadObsLayer(); loadChargers('Monterrey');
+  loadMeta(); loadNse(); loadObsLayer();
+
+  // parámetros GET (?lat=&lon=&cp=) para compartir un punto ya evaluado por URL
+  const params = new URLSearchParams(location.search);
+  const plat = parseFloat(params.get('lat')), plon = parseFloat(params.get('lon'));
+  if(!isNaN(plat) && !isNaN(plon)){
+    const pcp = params.get('cp');
+    if(pcp && $('#cp')) $('#cp').value = pcp;
+    if($('#coordInput')) $('#coordInput').value = plat.toFixed(5)+', '+plon.toFixed(5);
+    map.setView([plat, plon], 15);
+    switchTab('explorar');
+    evaluate(plat, plon);
+  }else{
+    loadChargers('Monterrey');
+  }
   setTimeout(()=>map.invalidateSize(), 50);
+}
+
+function updateUrlParams(lat, lon, cp){
+  const params = new URLSearchParams();
+  params.set('lat', lat.toFixed ? lat.toFixed(5) : lat);
+  params.set('lon', lon.toFixed ? lon.toFixed(5) : lon);
+  if(cp) params.set('cp', cp);
+  history.replaceState(null, '', location.pathname + '?' + params.toString());
 }
 
 async function loadObsLayer(){
@@ -164,15 +185,21 @@ function goToCoords(){
 }
 
 async function evaluate(lat, lon){
-  const radius = parseFloat($('#radius').value);
   const cp = ($('#cp')?.value||'').trim();
-  lastQuery = {lat, lon, radius, cp};
+  updateUrlParams(lat, lon, cp);
   evalLayer.clearLayers();
-  L.circle([lat,lon],{radius:radius*1000,color:'#4ea1ff',weight:1.5,fillOpacity:.06}).addTo(evalLayer);
   L.marker([lat,lon]).addTo(evalLayer);
   $('#analysis').innerHTML='<div class="empty">Analizando…</div>';
   try{
-    const a = await (await fetch(API+`/api/analyze?lat=${lat}&lon=${lon}&radius=${radius}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
+    const a = await (await fetch(API+`/api/analyze?lat=${lat}&lon=${lon}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
+    const radius = a.query.radius_km;
+    lastQuery = {lat, lon, radius, cp};
+    L.circle([lat,lon],{radius:radius*1000,color:'#4ea1ff',weight:1.5,fillOpacity:.06}).addTo(evalLayer);
+    // pre-carga el select de Metrópoli según a qué metro pertenece el punto evaluado
+    if(a.query.metro && $('#metro').value !== a.query.metro){
+      $('#metro').value = a.query.metro;
+      loadChargers(a.query.metro);
+    }
     renderAnalysis(a);
   }catch(e){ $('#analysis').innerHTML='<div class="empty">Error: '+e+'</div>'; }
 }
@@ -205,7 +232,11 @@ function businessHtml(b){
   const pay = b.payback_years!=null ? b.payback_years+' años' : 'n/d';
   const roiPct = b.roi!=null ? (b.roi*100).toFixed(0)+'%' : 'n/d';
   const lf=b.local_factors, y9=b.year9, com=b.commissions;
+  const exportUrl = lastQuery ? `${API}/api/export/business-case?lat=${lastQuery.lat}&lon=${lastQuery.lon}`
+    + `&radius=${lastQuery.radius}${lastQuery.cp?('&cp='+encodeURIComponent(lastQuery.cp)):''}` : '#';
   return `<div class="section-t">💰 Business case · 1 set de ${b.chargers} cargadores (${b.chargers} autos simultáneos)</div>
+    <a class="ghost block" style="text-align:center;text-decoration:none;display:block;margin:4px 0"
+       href="${exportUrl}">📥 Exportar business case completo (Excel)</a>
     <div class="bekpi" style="border-color:${beCol}">
       <div class="bev" style="color:${beCol}">${be}</div>
       <div class="bel">Punto de equilibrio<br><span>recuperar CapEx de ${usd(b.capex_total)}</span></div>
@@ -315,7 +346,7 @@ function renderAnalysis(a){
     </div>
     <div class="section-t">Nivel socioeconómico</div>
     <div class="chips">${nseBadge}</div>
-    <div class="section-t">En ${a.query.radius_km} km a la redonda${a.query.metro?' · '+a.query.metro:''}</div>
+    <div class="section-t">En ${a.query.radius_km} km a la redonda <small>(${a.query.density_tier==='urbano'?'zona urbana':'zona rural/dispersa'}, radio automático)</small>${a.query.metro?' · '+a.query.metro:''}</div>
     <div class="grid2">
       ${stat('~'+est.cars_est.toLocaleString(),'autos (est.)')}
       ${stat('~'+est.ev_est.toLocaleString(),'eléctricos (est.)')}
@@ -692,8 +723,11 @@ function loadAyuda(){
 
     <h3 class="s">Cómo usar la UI</h3>
     <ol>
-      <li><b>Explorar</b>: elige metrópoli y radio, haz <b>clic en el mapa</b> para evaluar un punto.
-      Enciende <b>Cargadores</b> y <b>Capa NSE</b> para ver la infraestructura y el nivel socioeconómico.</li>
+      <li><b>Explorar</b>: elige metrópoli, haz <b>clic en el mapa</b> para evaluar un punto (el radio de
+      análisis se calcula automáticamente: urbano ~6.3km / rural-disperso ~12km — el radio normal de
+      circulación diaria más un 50% adicional, por la motivación extra de buscar un cargador conveniente
+      que trae tener un auto eléctrico. Enciende <b>Cargadores</b> y <b>Capa NSE</b> para ver
+      la infraestructura y el nivel socioeconómico.</li>
       <li><b>Candidatos</b>: genera el <b>top 15</b> de ubicaciones sugeridas (sitios Tesla, malls sin carga, huecos de demanda). Clic en un renglón para evaluarlo.</li>
       <li><b>Insights</b>: dashboard del mercado (ICCT/AMIA/INEGI): adopción por estado, precios, y el cruce <b>armadora × NSE</b>.</li>
       <li><b>Agregar</b>: registra un <b>levantamiento de campo</b> (sitio + zonas: sótanos, corporativo/comercial, marcas, vehículos vistos, cargadores planeados). Usa <b>Ejemplo Samara</b> para ver el formato. Los datos entran al motor de inmediato.</li>
@@ -703,7 +737,7 @@ function loadAyuda(){
     <h3 class="s">Cómo consumir la API (app móvil)</h3>
     <p>Todo corre sobre estos endpoints (CORS abierto):</p>
     <div class="note">
-      <code>GET /api/analyze?lat=..&amp;lon=..&amp;radius=5</code> → ¿buena ubicación?<br>
+      <code>GET /api/analyze?lat=..&amp;lon=..</code> → ¿buena ubicación? (radio automático)<br>
       <code>GET /api/candidates?metro=Monterrey</code> → sugerencias<br>
       <code>GET /api/armadora-nse</code> · <code>/api/insights</code> · <code>/api/nse</code> · <code>/api/demand</code><br>
       <code>POST /api/weights</code> {weights} · <code>GET /api/nse/reload</code>

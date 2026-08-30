@@ -1,4 +1,5 @@
-# El servidor en runtime usa solo la librería estándar de Python (sin dependencias).
-# openpyxl solo se necesita para reconstruir datos con etl/build_dataset.py,
-# que NO corre en la nube (los JSON ya están en data/processed/).
+# El servidor usa solo la librería estándar de Python, más openpyxl para:
+# - reconstruir datos con los scripts de etl/ (no corre en la nube, los JSON ya
+#   están en data/processed/)
+# - exportar el business case a Excel en runtime (GET /api/export/business-case)
 openpyxl>=3.1

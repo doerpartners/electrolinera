@@ -4,8 +4,29 @@ Todo lo que aquí vive puede ajustarse conforme se alimenten insights nuevos,
 sin tocar la lógica del motor de scoring.
 """
 
-# --- Radio de análisis por defecto (la app móvil pregunta "a la redonda") ---
-DEFAULT_RADIUS_KM = 5.0
+# --- Radio de análisis: cuánto se mueve la gente diario alrededor de su casa ---
+# Ya no es un valor fijo elegido por el usuario — se determina automáticamente según si el
+# punto cae dentro de una metrópoli conocida (config.METROS) o no (urbano vs. rural/disperso).
+# Base calibrada con datos reales: INEGI Encuesta Origen-Destino 2017 (ZMVM), base reprocesada
+# por WRI México con distancia de viaje por localidad (TLOC 1=más urbano..4=más disperso):
+#   TLOC=1 (más urbano): 4.19km promedio ponderado -> base de "urbano"
+#   TLOC=4 (más disperso): 7.15km promedio ponderado -> base de "rural", redondeado un poco al
+#   alza porque metros más pequeños/dispersos que la ZMVM (ej. San Miguel de Allende y todo lo
+#   que cae fuera de las 6 metrópolis cubiertas) pueden ser más dispersos que cualquier zona
+#   TLOC=4 capturada ahí — extrapolación documentada, no medida directamente.
+# Fuera de la ZMVM esto es una aproximación (solo tenemos el dato real para esa zona), pero es
+# consistente con la literatura internacional de "activity space" (~2x urbano/rural, no 5-10x).
+#
+# Encima de esa base medida se aplica un "premio de búsqueda EV": un dueño de auto eléctrico
+# tiene una motivación adicional (autonomía, planeación de ruta, pocos cargadores convenientes)
+# para buscar un cargador más allá de su radio normal de circulación diaria — no viene de la
+# EOD, es un supuesto explícito y ajustable (no medido).
+MOBILITY_RADIUS_KM_BASE = {"urbano_km": 4.2, "rural_km": 8.0}  # medido (ver detalle arriba)
+EV_SEARCH_PREMIUM_PCT = 0.50  # % adicional sobre el radio normal de circulación
+MOBILITY_RADIUS_KM = {
+    "urbano_km": round(MOBILITY_RADIUS_KM_BASE["urbano_km"] * (1 + EV_SEARCH_PREMIUM_PCT), 2),
+    "rural_km": round(MOBILITY_RADIUS_KM_BASE["rural_km"] * (1 + EV_SEARCH_PREMIUM_PCT), 2),
+}
 
 # --- Unidad de despliegue: siempre 1 set de 6 cargadores (6 autos simultáneos) ---
 # No se recomiendan sitios/sets adicionales aunque la demanda sea alta.

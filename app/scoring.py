@@ -159,9 +159,18 @@ class Engine:
             },
         }
 
+    def _auto_radius_km(self, lat, lon):
+        """Radio (km) en el que la gente se mueve a diario alrededor de su casa —
+        ver config.MOBILITY_RADIUS_KM para la fuente/metodología. Urbano si el punto
+        cae dentro de una metrópoli conocida (config.METROS); si no, rural/disperso."""
+        metro, _ = self.metro_of(lat, lon)
+        mr = config.MOBILITY_RADIUS_KM
+        return (mr["urbano_km"], "urbano") if metro else (mr["rural_km"], "rural")
+
     # ---------- análisis principal ----------
     def analyze_point(self, lat, lon, radius_km=None, cp=None):
-        radius_km = radius_km or config.DEFAULT_RADIUS_KM
+        auto_radius_km, density_tier = self._auto_radius_km(lat, lon)
+        radius_km = radius_km or auto_radius_km
         nearby = self.index.query_radius(lat, lon, radius_km)
         metro, m = self.metro_of(lat, lon)
         state_key = m["state"] if m else None
@@ -289,7 +298,7 @@ class Engine:
         biz = business.compute(sites, {"metro": metro, "ses_index": ses,
                                        "util": total / 100.0, "cp": cp})
 
-        rationale = self._rationale_narrative(metro, radius_km, veh, ses_ctx, ses, sub, W, total,
+        rationale = self._rationale_narrative(metro, radius_km, density_tier, veh, ses_ctx, ses, sub, W, total,
                                               verdict, npub, ev_per_charger, ntesla, anchor_desc, biz)
 
         insights_txt = self._insights_text(metro, state_key, veh, sub, npub, ntesla, ses_ctx)
@@ -311,7 +320,7 @@ class Engine:
 
         return {
             "query": {"lat": lat, "lon": lon, "radius_km": radius_km,
-                      "metro": metro, "state": state_key},
+                      "density_tier": density_tier, "metro": metro, "state": state_key},
             "score": total,
             "verdict": verdict,
             "verdict_msg": verdict_msg,
@@ -467,7 +476,7 @@ class Engine:
             while la <= lat1:
                 lo = lon0
                 while lo <= lon1:
-                    near = self.index.query_radius(la, lo, config.DEFAULT_RADIUS_KM)
+                    near = self.index.query_radius(la, lo, config.MOBILITY_RADIUS_KM["urbano_km"])
                     pub = sum(1 for p, _ in near if p["class"] == "public")
                     if pub <= 1:  # subatendido
                         cands.append({"lat": round(la, 4), "lon": round(lo, 4),
@@ -534,7 +543,7 @@ class Engine:
         out.append("EVs en México son premium (BEV ~MX$822k vs ICE ~MX$554k), correlacionados con NSE alto.")
         return out
 
-    def _rationale_narrative(self, metro, radius_km, veh, ses_ctx, ses, sub, W, total, verdict,
+    def _rationale_narrative(self, metro, radius_km, density_tier, veh, ses_ctx, ses, sub, W, total, verdict,
                              npub, ev_per_charger, ntesla, anchor_desc, biz):
         """Párrafo narrado que sintetiza el por qué del score (factores reales del sitio) y,
         por separado, los supuestos genéricos del caso de negocio que aún no están calibrados
@@ -568,9 +577,12 @@ class Engine:
                         "tesla_opportunity": "la oportunidad de complementar sitios Tesla"}[dominant]
 
         lf = biz["local_factors"]
+        tier_txt = "zona urbana" if density_tier == "urbano" else "zona rural/dispersa"
         return (
             f"Esta ubicación obtiene un score de {total}/100 ({verdict}), impulsado principalmente por "
-            f"{dominant_lbl}. En un radio de {radius_km}km{(' en ' + metro) if metro else ''} se estima un "
+            f"{dominant_lbl}. En un radio de {radius_km}km{(' en ' + metro) if metro else ''} "
+            f"({tier_txt} — radio calculado automáticamente según qué tanto se mueve la gente a diario "
+            f"alrededor de su casa ahí, no un valor fijo) se estima un "
             f"parque circulante de ~{veh['cars_est']:,} autos, de los cuales ~{veh['ev_est']:,} son eléctricos "
             f"o híbridos enchufables (~{veh['ev_penetration_pct']}% de penetración local); a nivel nacional el "
             f"mercado EV+PHEV crece ~{round(mk['ev_growth_yoy'] * 100)}%/año según ICCT, aunque el caso de "
