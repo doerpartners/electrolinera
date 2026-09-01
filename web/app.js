@@ -38,6 +38,7 @@ function init(){
   });
 
   $('#metro').addEventListener('change', onMetro);
+  $('#bcCase').addEventListener('change', onCaseChange);
   $('#btnCand').addEventListener('click', loadCandidates);
   $('#btnChargers').addEventListener('click', toggleChargers);
   $('#btnNse').addEventListener('click', toggleNse);
@@ -48,12 +49,14 @@ function init(){
 
   loadMeta(); loadNse(); loadObsLayer();
 
-  // parámetros GET (?lat=&lon=&cp=) para compartir un punto ya evaluado por URL
+  // parámetros GET (?lat=&lon=&cp=&case=) para compartir un punto ya evaluado por URL
   const params = new URLSearchParams(location.search);
   const plat = parseFloat(params.get('lat')), plon = parseFloat(params.get('lon'));
   if(!isNaN(plat) && !isNaN(plon)){
     const pcp = params.get('cp');
     if(pcp && $('#cp')) $('#cp').value = pcp;
+    const pcase = params.get('case');
+    if((pcase==='full'||pcase==='partial') && $('#bcCase')) $('#bcCase').value = pcase;
     if($('#coordInput')) $('#coordInput').value = plat.toFixed(5)+', '+plon.toFixed(5);
     map.setView([plat, plon], 15);
     switchTab('explorar');
@@ -64,11 +67,12 @@ function init(){
   setTimeout(()=>map.invalidateSize(), 50);
 }
 
-function updateUrlParams(lat, lon, cp){
+function updateUrlParams(lat, lon, cp, bcCase){
   const params = new URLSearchParams();
   params.set('lat', lat.toFixed ? lat.toFixed(5) : lat);
   params.set('lon', lon.toFixed ? lon.toFixed(5) : lon);
   if(cp) params.set('cp', cp);
+  if(bcCase && bcCase!=='full') params.set('case', bcCase);
   history.replaceState(null, '', location.pathname + '?' + params.toString());
 }
 
@@ -184,16 +188,21 @@ function goToCoords(){
   evaluate(lat, lon);
 }
 
+function onCaseChange(){
+  if(lastQuery) evaluate(lastQuery.lat, lastQuery.lon);
+}
+
 async function evaluate(lat, lon){
   const cp = ($('#cp')?.value||'').trim();
-  updateUrlParams(lat, lon, cp);
+  const bcCase = $('#bcCase')?.value||'full';
+  updateUrlParams(lat, lon, cp, bcCase);
   evalLayer.clearLayers();
   L.marker([lat,lon]).addTo(evalLayer);
   $('#analysis').innerHTML='<div class="empty">Analizando…</div>';
   try{
-    const a = await (await fetch(API+`/api/analyze?lat=${lat}&lon=${lon}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
+    const a = await (await fetch(API+`/api/analyze?lat=${lat}&lon=${lon}&case=${bcCase}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
     const radius = a.query.radius_km;
-    lastQuery = {lat, lon, radius, cp};
+    lastQuery = {lat, lon, radius, cp, case: bcCase};
     L.circle([lat,lon],{radius:radius*1000,color:'#4ea1ff',weight:1.5,fillOpacity:.06}).addTo(evalLayer);
     // pre-carga el select de Metrópoli según a qué metro pertenece el punto evaluado
     if(a.query.metro && $('#metro').value !== a.query.metro){
@@ -232,17 +241,23 @@ function businessHtml(b){
   const pay = b.payback_years!=null ? b.payback_years+' años' : 'n/d';
   const roiPct = b.roi!=null ? (b.roi*100).toFixed(0)+'%' : 'n/d';
   const lf=b.local_factors, y9=b.year9, com=b.commissions;
+  const caseLbl = b.case==='partial' ? 'parcial' : 'completo';
   const exportUrl = lastQuery ? `${API}/api/export/business-case?lat=${lastQuery.lat}&lon=${lastQuery.lon}`
-    + `&radius=${lastQuery.radius}${lastQuery.cp?('&cp='+encodeURIComponent(lastQuery.cp)):''}` : '#';
-  return `<div class="section-t">💰 Business case · 1 set de ${b.chargers} cargadores (${b.chargers} autos simultáneos)</div>
+    + `&radius=${lastQuery.radius}&case=${b.case}${lastQuery.cp?('&cp='+encodeURIComponent(lastQuery.cp)):''}` : '#';
+  const landlordPct = Math.round(lf.landlord_profit_share*100);
+  const partialNote = b.case==='partial'
+    ? `<div class="disc" style="margin-top:2px">⚠️ Caso parcial: ${b.chargers} cargadores, sin contrato de demanda CFE ni renta al predio — el OpEx hoy es una aproximación (25% plano del caso completo), no un desglose real todavía.</div>`
+    : '';
+  return `<div class="section-t">💰 Business case ${caseLbl} · 1 set de ${b.chargers} cargadores (${b.chargers} autos simultáneos)</div>
+    ${partialNote}
     <a class="ghost block" style="text-align:center;text-decoration:none;display:block;margin:4px 0"
-       href="${exportUrl}">📥 Exportar business case completo (Excel)</a>
+       href="${exportUrl}">📥 Exportar business case ${caseLbl} (Excel)</a>
     <div class="bekpi" style="border-color:${beCol}">
       <div class="bev" style="color:${beCol}">${be}</div>
       <div class="bel">Punto de equilibrio<br><span>recuperar CapEx de ${usd(b.capex_total)}</span></div>
     </div>
     <div class="disc" style="margin-top:2px">Margen de contribución ${b.contribution_margin_per_kwh} USD/kWh
-      (servicio ${b.service_cost_per_kwh}/kWh) · reparto utilidad: 16% local / 84% inversionista.</div>
+      (servicio ${b.service_cost_per_kwh}/kWh) · reparto utilidad: ${landlordPct}% local / ${100-landlordPct}% inversionista.</div>
     <div class="grid2">
       ${stat(usd(b.capex_total),'CapEx (inversión)')}
       ${stat(pay,'Payback')}
@@ -285,9 +300,9 @@ function nearestIdx(arr, v){
 async function loadSensitivity(){
   if(!lastQuery){ $('#sensBox').innerHTML='<div class="empty">Evalúa un punto primero.</div>'; return; }
   $('#sensBox').innerHTML='<div class="empty">Calculando matriz…</div>';
-  const {lat,lon,radius,cp}=lastQuery;
+  const {lat,lon,radius,cp,case:bcCase}=lastQuery;
   try{
-    const d=await (await fetch(API+`/api/sensitivity?lat=${lat}&lon=${lon}&radius=${radius}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
+    const d=await (await fetch(API+`/api/sensitivity?lat=${lat}&lon=${lon}&radius=${radius}&case=${bcCase||'full'}`+(cp?`&cp=${encodeURIComponent(cp)}`:''))).json();
     const pi=nearestIdx(d.prices,d.current.price), sj=nearestIdx(d.services,d.current.service);
     const head=`<tr><th>P&nbsp;\\&nbsp;S</th>${d.services.map(s=>`<th>${(s*100).toFixed(0)}%</th>`).join('')}</tr>`;
     const rows=d.prices.map((p,i)=>`<tr><th>${p}</th>${d.grid[i].map((v,j)=>{
@@ -296,7 +311,7 @@ async function loadSensitivity(){
       return `<td class="heatc${cur}" style="background:${beColorMonths(v)}" title="precio ${p} · servicio ${(d.services[j]*100).toFixed(0)}%: ${label} meses">${label}</td>`;
     }).join('')}</tr>`).join('');
     $('#sensBox').innerHTML=`
-      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (1 set de 6 cargadores). Filas = <b>precio de carga</b> (USD/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} USD/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
+      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (1 set de ${d.chargers} cargadores, caso ${d.case==='partial'?'parcial':'completo'}). Filas = <b>precio de carga</b> (USD/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} USD/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
       <div style="overflow-x:auto"><table class="heat">${head}${rows}</table></div>
       <div class="heatleg">
         <span><i style="background:${beColorMonths(24)}"></i>≤36m</span>

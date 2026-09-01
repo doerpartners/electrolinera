@@ -7,6 +7,12 @@ de ~60kW). `compute()` recibe `sites` por compatibilidad pero siempre se llama c
 1 — no se recomiendan/escalan sets adicionales aunque la demanda sea alta. Todo
 tunable en app/config.py -> BUSINESS_CASE.
 
+`compute()` también recibe `case` ("full" por default, o "partial"): el caso parcial
+es un despliegue de 4 cargadores (no 6), sin contrato de demanda CFE ni renta al
+predio — usa config.BUSINESS_CASE_PARTIAL_OVERRIDES, que hoy recorta el OpEx completo
+a un 25% plano como placeholder (ver comentario ahí) hasta tener un desglose de OpEx
+propio para este caso.
+
 Cosas de la fuente que NO se portaron (documentadas para que no parezcan un olvido):
  - La curva "tiempo esperado de utilización" del Excel no alimentaba ninguna fórmula
    de energía/ingreso/costo ahí — solo la curva de "utilización esperada" se usa aquí.
@@ -47,9 +53,13 @@ def _commissions(capex_total, sites):
     }
 
 
-def compute(sites, ctx):
-    """ctx: {metro, ses_index, util (0..1), cp(optional), electricity(optional, ya resuelto)}."""
-    bc = config.BUSINESS_CASE
+def compute(sites, ctx, case="full"):
+    """ctx: {metro, ses_index, util (0..1), cp(optional), electricity(optional, ya resuelto)}.
+    case: "full" (1 set de 6 cargadores, OpEx completo con contrato CFE + renta) |
+    "partial" (4 cargadores, sin contrato de demanda CFE ni renta al predio — ver
+    config.BUSINESS_CASE_PARTIAL_OVERRIDES)."""
+    bc = {**config.BUSINESS_CASE, **(config.BUSINESS_CASE_PARTIAL_OVERRIDES if case == "partial" else {})}
+    opex_multiplier = bc.get("opex_multiplier", 1.0)
     sites = max(1, int(sites))
 
     capex_total = sites * bc["site_capex_usd"]
@@ -121,6 +131,8 @@ def compute(sites, ctx):
                 "mantenimiento": round(revenue * maint_pct),
                 "plataforma_software": round(revenue * platform_pct),
             }
+        if opex_multiplier != 1.0:
+            opex_breakdown = {k: round(v * opex_multiplier) for k, v in opex_breakdown.items()}
         opex = sum(opex_breakdown.values())
 
         gross_profit = revenue - opex
@@ -167,6 +179,7 @@ def compute(sites, ctx):
 
     return {
         "currency": bc["currency"],
+        "case": case,
         "sites": sites,
         "chargers": bc["chargers_per_site"] * sites,
         "capex_total": capex_total,
@@ -201,5 +214,6 @@ def compute(sites, ctx):
             "utilization": round(util_eff, 2),
             "inflation_pct": inflation,
             "ev_fleet_growth_pct_yoy": ev_growth,
+            "landlord_profit_share": landlord_share,
         },
     }

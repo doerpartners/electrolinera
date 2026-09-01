@@ -123,6 +123,23 @@ BUSINESS_CASE = {
     },
 }
 
+# --- Business case parcial: despliegue reducido de 4 cargadores (no 6), sin contrato de
+# suministro en media tensión con CFE (tarifa GDMTH) y sin renta al dueño del predio.
+# Se aplican como overrides sobre BUSINESS_CASE (business.compute(case="partial")).
+#
+# opex_multiplier es un placeholder: sin cargo por demanda contratada ni cargo fijo GDMTH
+# (el sitio consume en una tarifa de menor escala, sin contrato de gran demanda), y sin
+# comisión/mantenimiento/plataforma dimensionados aún para este caso más chico, el OpEx
+# completo se recorta a un 25% plano mientras se construye el desglose real (ver docstring
+# de business.py). Ajustar cuando haya un desglose de OpEx propio para el caso parcial.
+BUSINESS_CASE_PARTIAL_OVERRIDES = {
+    "chargers_per_site": 4,
+    "site_capacity_kw": 240,                          # 4 × 60kW
+    "site_capex_usd": round(250_000 * 4 / 6),         # escalado proporcional a cargadores (placeholder)
+    "opex_multiplier": 0.25,                          # placeholder: sin contrato CFE ni renta -> ~25% del OpEx completo
+    "landlord_profit_share": 0.0,                     # sin renta al predio: 100% para el inversionista
+}
+
 # --- Tarifa eléctrica real por ubicación (CFE, tarifa GDMTH — Gran Demanda Media Tensión ---
 # Horaria) para consumo comercial/industrial. Reemplaza el supuesto plano anterior.
 # CP -> municipio (data/processed/cp_municipio.json, catálogo SEPOMEX) -> división CFE -> tarifa.

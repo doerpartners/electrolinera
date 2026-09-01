@@ -51,11 +51,11 @@ class Engine:
             self._build_index()
         return ok, errs, norm
 
-    def sensitivity(self, lat, lon, radius=None, cp=None, prices=None, services=None):
+    def sensitivity(self, lat, lon, radius=None, cp=None, prices=None, services=None, case="full"):
         """Matriz de punto de equilibrio (meses) variando precio de carga (filas)
         y costo de servicio agregado (columnas, % de facturación). Para decidir el
         pricing óptimo por sitio."""
-        a = self.analyze_point(lat, lon, radius, cp)
+        a = self.analyze_point(lat, lon, radius, cp, case=case)
         sites = a["recommended_sites"]
         ctx0 = {"metro": a["query"]["metro"], "ses_index": a["ses_proxy"],
                 "util": a["score"] / 100.0, "cp": cp}
@@ -66,13 +66,15 @@ class Engine:
             row = []
             for s in services:
                 b = business.compute(sites, {**ctx0, "price_per_kwh": p,
-                                             "service_opex_pct": s})
+                                             "service_opex_pct": s}, case=case)
                 row.append(b["break_even_months"])
             grid.append(row)
-        bc = config.BUSINESS_CASE
+        bc = {**config.BUSINESS_CASE, **(config.BUSINESS_CASE_PARTIAL_OVERRIDES if case == "partial" else {})}
         current_service_pct = bc["bank_commission_pct"] + bc["maintenance_pct"] + bc["platform_pct"]
         return {
             "sites": sites,
+            "case": case,
+            "chargers": a["business_case"]["chargers"],
             "prices": prices, "services": services, "grid": grid,
             "current": {"price": bc["price_per_kwh_user"], "service": current_service_pct},
             "site": {"score": a["score"], "verdict": a["verdict"],
@@ -168,7 +170,7 @@ class Engine:
         return (mr["urbano_km"], "urbano") if metro else (mr["rural_km"], "rural")
 
     # ---------- análisis principal ----------
-    def analyze_point(self, lat, lon, radius_km=None, cp=None):
+    def analyze_point(self, lat, lon, radius_km=None, cp=None, case="full"):
         auto_radius_km, density_tier = self._auto_radius_km(lat, lon)
         radius_km = radius_km or auto_radius_km
         nearby = self.index.query_radius(lat, lon, radius_km)
@@ -294,9 +296,9 @@ class Engine:
         verdict, verdict_msg = self._verdict(total)
         sites = 1  # siempre 1 set de 6 cargadores (6 autos simultáneos); no se proponen más
 
-        # business case para el set de 6 cargadores
+        # business case: caso completo (6 cargadores) o parcial (4, sin contrato CFE ni renta)
         biz = business.compute(sites, {"metro": metro, "ses_index": ses,
-                                       "util": total / 100.0, "cp": cp})
+                                       "util": total / 100.0, "cp": cp}, case=case)
 
         rationale = self._rationale_narrative(metro, radius_km, density_tier, veh, ses_ctx, ses, sub, W, total,
                                               verdict, npub, ev_per_charger, ntesla, anchor_desc, biz)
@@ -320,7 +322,8 @@ class Engine:
 
         return {
             "query": {"lat": lat, "lon": lon, "radius_km": radius_km,
-                      "density_tier": density_tier, "metro": metro, "state": state_key},
+                      "density_tier": density_tier, "metro": metro, "state": state_key,
+                      "case": case},
             "score": total,
             "verdict": verdict,
             "verdict_msg": verdict_msg,
@@ -597,9 +600,9 @@ class Engine:
             f"{', ' + lf['electricity_as_of'] if lf['electricity_as_of'] else ''}): "
             f"{lf['electricity_punta_usd_kwh']} USD/kWh en punta, {lf['electricity_intermedia_usd_kwh']} en "
             f"intermedia y {lf['electricity_base_usd_kwh']} en base, más un cargo por demanda de "
-            f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes (capacidad contratada de 360kW) — "
+            f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes (capacidad contratada de {biz['chargers'] * 60}kW) — "
             f"este cargo por demanda suele ser el componente más grande del costo eléctrico de un set de "
-            f"6 cargadores, no solo el consumo por kWh. Para el resto del caso de negocio se asume una "
+            f"{biz['chargers']} cargadores, no solo el consumo por kWh. Para el resto del caso de negocio se asume una "
             f"inversión de ${biz['capex_total']:,} USD, una tasa de descuento del "
             f"{round(biz['discount_rate_pct'] * 100)}% para el NPV, inflación anual del "
             f"{round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
@@ -607,8 +610,12 @@ class Engine:
             f"nacional, no calibrados por sitio. Quedan fuera del modelo, y son oportunidades de mejora con "
             f"datos reales del sitio: el costo real de mano de obra local (hoy implícito dentro del 10% de "
             f"mantenimiento), la renta real por metro cuadrado (hoy se usa un reparto fijo de utilidad "
-            f"16%/84% en vez de una renta por m²), y la posibilidad de generación solar en sitio (no modelada), "
+            f"{round(lf['landlord_profit_share'] * 100)}%/{round((1 - lf['landlord_profit_share']) * 100)}% "
+            f"en vez de una renta por m²), y la posibilidad de generación solar en sitio (no modelada), "
             f"que podría reducir el cargo por demanda y mejorar el payback."
+            + (f" Caso parcial: {biz['chargers']} cargadores, sin contrato de demanda CFE ni renta al predio "
+               f"— el OpEx se recorta hoy a un 25% plano del caso completo como aproximación temporal, no un "
+               f"desglose real todavía." if biz.get("case") == "partial" else "")
         )
 
 
