@@ -27,8 +27,8 @@ BOLD = Font(name=FONT_NAME, bold=True)
 NORMAL = Font(name=FONT_NAME)
 ITALIC_MUTED = Font(name=FONT_NAME, italic=True, color="666666")
 WRAP = Alignment(wrap_text=True, vertical="top")
-USD = '$#,##0'
-USD2 = '$#,##0.0000'
+MXN = '$#,##0'
+MXN2 = '$#,##0.0000'
 PCT = '0.0%'
 
 
@@ -112,15 +112,16 @@ def _sheet_resumen(ws, a):
     ws.cell(row=row, column=1,
             value=f"Business case — resumen ({case_lbl}, 1 set de {biz['chargers']} cargadores)").font = SECTION_FONT
     row += 1
-    row = _kv(ws, row, "CapEx total", biz["capex_total"], USD)
+    row = _kv(ws, row, "CapEx total", biz["capex_total"], MXN)
     row = _kv(ws, row, "Cargadores", biz["chargers"])
+    row = _kv(ws, row, "Coches cargando/día (est., año 1)", biz["estimated_daily_charging_cars"])
     row = _kv(ws, row, "Payback", f"{biz['payback_years']} años ({biz['break_even_months']} meses)" if biz["payback_years"] else "no rentable en 9 años")
     row = _kv(ws, row, "ROI a 9 años", biz["roi"], PCT if isinstance(biz["roi"], float) else None)
-    row = _kv(ws, row, f"NPV @ {biz['discount_rate_pct']*100:.0f}%", biz["npv"], USD)
-    row = _kv(ws, row, "Valor residual (año 9)", biz["residual_value"], USD)
-    row = _kv(ws, row, "Ingreso año 1", biz["revenue_annual"], USD)
-    row = _kv(ws, row, "OpEx año 1", biz["opex_annual"], USD)
-    row = _kv(ws, row, "Utilidad bruta año 1", biz["gross_profit_annual"], USD)
+    row = _kv(ws, row, f"NPV @ {biz['discount_rate_pct']*100:.0f}%", biz["npv"], MXN)
+    row = _kv(ws, row, "Valor residual (año 9)", biz["residual_value"], MXN)
+    row = _kv(ws, row, "Ingreso año 1", biz["revenue_annual"], MXN)
+    row = _kv(ws, row, "OpEx año 1", biz["opex_annual"], MXN)
+    row = _kv(ws, row, "Utilidad bruta año 1", biz["gross_profit_annual"], MXN)
 
     row += 1
     ws.cell(row=row, column=1, value="Racional de la decisión").font = SECTION_FONT
@@ -140,7 +141,7 @@ def _sheet_flujo(ws, a):
     years = biz["years"]
     opex_keys = list(years[0]["opex_breakdown"].keys())
     landlord_pct = round(biz["local_factors"]["landlord_profit_share"] * 100)
-    headers = (["Año", "Utilización", "Horas activo/cargador/día", "Ingreso"]
+    headers = (["Año", "Utilización", "Horas activo/cargador/día", "Coches carga/día (est.)", "Ingreso"]
                + [OPEX_LABELS.get(k, k) for k in opex_keys]
                + ["OpEx total", "Utilidad bruta", f"Utilidad local ({landlord_pct}%)", "Utilidad inversionista",
                   "Valor residual", "Utilidad acumulada inversionista"])
@@ -150,20 +151,21 @@ def _sheet_flujo(ws, a):
         ws.cell(row=row, column=col, value=y["year"]); col += 1
         c = ws.cell(row=row, column=col, value=y["utilization"]); c.number_format = PCT; col += 1
         ws.cell(row=row, column=col, value=round(y["utilization"] * 24, 1)); col += 1
-        ws.cell(row=row, column=col, value=y["revenue"]).number_format = USD; col += 1
+        ws.cell(row=row, column=col, value=y["estimated_daily_charging_cars"]); col += 1
+        ws.cell(row=row, column=col, value=y["revenue"]).number_format = MXN; col += 1
         for k in opex_keys:
-            ws.cell(row=row, column=col, value=y["opex_breakdown"].get(k, 0)).number_format = USD
+            ws.cell(row=row, column=col, value=y["opex_breakdown"].get(k, 0)).number_format = MXN
             col += 1
-        ws.cell(row=row, column=col, value=y["opex"]).number_format = USD; col += 1
-        ws.cell(row=row, column=col, value=y["gross_profit"]).number_format = USD; col += 1
-        ws.cell(row=row, column=col, value=y["landlord_profit"]).number_format = USD; col += 1
-        ws.cell(row=row, column=col, value=y["investor_profit"]).number_format = USD; col += 1
-        ws.cell(row=row, column=col, value=y["residual_value"]).number_format = USD; col += 1
-        ws.cell(row=row, column=col, value=y["cumulative_investor_profit"]).number_format = USD; col += 1
+        ws.cell(row=row, column=col, value=y["opex"]).number_format = MXN; col += 1
+        ws.cell(row=row, column=col, value=y["gross_profit"]).number_format = MXN; col += 1
+        ws.cell(row=row, column=col, value=y["landlord_profit"]).number_format = MXN; col += 1
+        ws.cell(row=row, column=col, value=y["investor_profit"]).number_format = MXN; col += 1
+        ws.cell(row=row, column=col, value=y["residual_value"]).number_format = MXN; col += 1
+        ws.cell(row=row, column=col, value=y["cumulative_investor_profit"]).number_format = MXN; col += 1
         row += 1
     ws.cell(row=row + 1, column=1,
             value=f"Horas activo/cargador/día = utilización × 24h (reparto uniforme entre los {biz['chargers']} cargadores).").font = ITALIC_MUTED
-    _autosize(ws, [6, 11, 14, 13] + [16] * len(opex_keys) + [13, 14, 14, 16, 13, 18])
+    _autosize(ws, [6, 11, 14, 16, 13] + [16] * len(opex_keys) + [13, 14, 14, 16, 13, 18])
 
 
 def _sheet_electricidad(ws, a):
@@ -179,20 +181,20 @@ def _sheet_electricidad(ws, a):
     row += 1
     ws.cell(row=row, column=1, value="Periodo").font = BOLD
     ws.cell(row=row, column=2, value="Horas/día").font = BOLD
-    ws.cell(row=row, column=3, value="USD/kWh").font = BOLD
+    ws.cell(row=row, column=3, value="MXN/kWh").font = BOLD
     row += 1
-    for label, hkey, rkey in [("Punta", "punta", "electricity_punta_usd_kwh"),
-                              ("Intermedia", "intermedia", "electricity_intermedia_usd_kwh"),
-                              ("Base", "base", "electricity_base_usd_kwh")]:
+    for label, hkey, rkey in [("Punta", "punta", "electricity_punta_mxn_kwh"),
+                              ("Intermedia", "intermedia", "electricity_intermedia_mxn_kwh"),
+                              ("Base", "base", "electricity_base_mxn_kwh")]:
         ws.cell(row=row, column=1, value=label)
         ws.cell(row=row, column=2, value=ph[hkey])
-        ws.cell(row=row, column=3, value=lf[rkey]).number_format = USD2
+        ws.cell(row=row, column=3, value=lf[rkey]).number_format = MXN2
         row += 1
     row += 1
-    row = _kv(ws, row, "Cargo por demanda (capacidad contratada)", f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes")
-    row = _kv(ws, row, "Precio al usuario", lf["price_per_kwh_user"], USD2)
-    row = _kv(ws, row, "Margen de contribución", a["business_case"]["contribution_margin_per_kwh"], USD2)
-    row = _kv(ws, row, "Costo de servicio", a["business_case"]["service_cost_per_kwh"], USD2)
+    row = _kv(ws, row, "Cargo por demanda (capacidad contratada)", f"{lf['electricity_demand_mxn_kw_month']} MXN/kW/mes")
+    row = _kv(ws, row, "Precio al usuario", lf["price_per_kwh_user"], MXN2)
+    row = _kv(ws, row, "Margen de contribución", a["business_case"]["contribution_margin_per_kwh"], MXN2)
+    row = _kv(ws, row, "Costo de servicio", a["business_case"]["service_cost_per_kwh"], MXN2)
     row = _kv(ws, row, "Inflación anual aplicada", lf["inflation_pct"], PCT)
     row = _kv(ws, row, "Crecimiento parque EV/PHEV usado en la proyección", lf["ev_fleet_growth_pct_yoy"], PCT)
     row = _kv(ws, row, "Utilización efectiva (score del sitio)", lf["utilization"], PCT)
@@ -206,9 +208,9 @@ def _sheet_comisiones(ws, a):
     row += 1
     ws.cell(row=row, column=1, value="No se restan del ROI/NPV del inversionista mostrados en Resumen.").font = ITALIC_MUTED
     row += 2
-    row = _kv(ws, row, "VIP (5% del CapEx)", com["vip_usd"], USD)
-    row = _kv(ws, row, "Vendedor", com["vendedor_usd"], USD)
-    row = _kv(ws, row, "Arquitecto", com["arquitecto_usd"], USD)
+    row = _kv(ws, row, "VIP (5% del CapEx)", com["vip_mxn"], MXN)
+    row = _kv(ws, row, "Vendedor", com["vendedor_mxn"], MXN)
+    row = _kv(ws, row, "Arquitecto", com["arquitecto_mxn"], MXN)
     row += 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row + 3, end_column=4)
     ws.cell(row=row, column=1, value=com["recurring_note"]).alignment = WRAP

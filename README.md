@@ -134,10 +134,10 @@ de 500 en la misma zona. Se reporta en `estimation.parking_ev_potential`.
 Cada evaluación calcula el caso de negocio para el set fijo de 6 cargadores
 (`app/business.py`, tunable en `config.BUSINESS_CASE`), a partir del modelo de
 negocios del proveedor: 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos
-simultáneos), **CapEx $250,000 USD**, proyectado a **9 años** (vida media
+simultáneos), **CapEx $4,625,000 MXN**, proyectado a **9 años** (vida media
 asumida de un cargador EV). No se proponen sets adicionales por ubicación.
 
-- **CapEx**: $250,000 USD por set de 6 cargadores (transformador + cargadores + cable + instalación).
+- **CapEx**: $4,625,000 MXN por set de 6 cargadores (transformador + cargadores + cable + instalación).
 - **Utilización esperada**: parte de `utilization_year1_pct` (23%) y crece cada año al ritmo de `VEHICLE_MODEL.ev_fleet_growth_pct_yoy` (% de crecimiento anual del parque EV+PHEV, ~9.7% por defecto) hasta un tope de `utilization_ceiling_pct` (40%) — liga la demanda real proyectada al ROI en vez de una curva fija. Modulada además por el score del sitio (un sitio de score bajo recibe una fracción de la curva vía `util_floor`).
 - **Energía y costo de electricidad — tarifa real de CFE por ubicación**: `app/electricity.py` resuelve
   código postal → municipio (catálogo SEPOMEX, `data/processed/cp_municipio.json`, ~32k CPs reales) →
@@ -150,7 +150,7 @@ asumida de un cargador EV). No se proponen sets adicionales por ubicación.
   (Monterrey, Guadalajara, CDMX, Mérida, Morelia, San Miguel de Allende); cualquier otro CP cae a un
   promedio nacional explícitamente marcado como `"confidence": "promedio nacional (sin confirmar por
   ubicación)"` — ver `data/electricity_tariffs_reference.xlsx` para la tabla completa con fuentes.
-  MXN convertido a USD vía `mxn_usd_fx_rate` (aproximado, ajustable).
+  Todo el caso de negocio vive en MXN (pesos); no hay conversión de moneda en tiempo de ejecución.
 - **Inflación anual** (`inflation_pct`): escala precio al usuario y costo de electricidad por igual cada año (nominal).
 - **OpEx**: electricidad + comisión bancaria/pasarela de pago (`bank_commission_pct`) + mantenimiento (10% de facturación) + plataforma de software (13% de facturación).
 - **Reparto de utilidad**: 16% dueño del local / 84% inversionista.
@@ -163,7 +163,7 @@ inversionista (ingresos − OpEx − % local − CapEx) cruza a positivo. Tambi�
 reporta `roi` a 9 años y el flujo año por año (`years`).
 
 **Análisis de sensibilidad (pricing óptimo):** `GET /api/sensitivity?lat=&lon=&radius=&cp=`
-devuelve una matriz de meses-para-payback variando el **precio de carga** (USD/kWh,
+devuelve una matriz de meses-para-payback variando el **precio de carga** (MXN/kWh,
 filas) × **costo de servicio agregado** (% de facturación, columnas), manteniendo
 fijos CapEx, electricidad y utilización del sitio. En la UI se muestra como un
 **heatmap** (verde ≤36m → rojo >120m/∞) con el punto operativo actual marcado.

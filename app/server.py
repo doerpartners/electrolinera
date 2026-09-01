@@ -8,7 +8,11 @@ Endpoints:
   GET  /api/insights
   GET  /api/analyze?lat=..&lon=..&case=full|partial   "¿aquí es buena ubicación?" (radio auto: urbano/rural)
   POST /api/analyze   {lat, lon, case}
-  GET  /api/candidates?metro=Monterrey&top=15   sugerencias de instalación
+  GET  /api/candidates?metro=Monterrey&top=15   sugerencias de instalación (excluye sitios con
+       <2 cargadores rápidos cercanos — riesgo de tráfico muy alto sin esa señal)
+  GET  /api/candidates/portfolio?metro=Monterrey&pool=30   igual, pero priorizado a nivel
+       portafolio: descuenta canibalización de demanda entre candidatos cercanos y marca
+       `portfolio_viable: false` donde deja de ser buen negocio abrir más sitios
   GET  /api/chargers?metro=Monterrey            cargadores para el mapa
   GET  /api/export/business-case?lat=..&lon=..&case=full|partial  descarga el business case (.xlsx)
 
@@ -94,7 +98,6 @@ class Handler(BaseHTTPRequestHandler):
                       **(config.BUSINESS_CASE_PARTIAL_OVERRIDES if case == "partial" else {})}
                 return self._send(200, {**bc, "case": case,
                                         "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"],
-                                        "mxn_usd_fx_rate": config.ELECTRICITY["mxn_usd_fx_rate"],
                                         "period_hours": config.ELECTRICITY["period_hours"]})
             if path == "/api/observations":
                 e = engine()
@@ -122,6 +125,10 @@ class Handler(BaseHTTPRequestHandler):
                 metro = q.get("metro", [None])[0]
                 top = int(q.get("top", [15])[0])
                 return self._send(200, {"candidates": engine().generate_candidates(metro, top)})
+            if path == "/api/candidates/portfolio":
+                metro = q.get("metro", [None])[0]
+                pool = int(q.get("pool", [30])[0])
+                return self._send(200, {"candidates": engine().prioritize_portfolio(metro, pool)})
             if path == "/api/chargers":
                 return self._handle_chargers(q)
             if path == "/api/export/business-case":
@@ -164,18 +171,16 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_business(self, data):
         """Ajusta supuestos del business case en vivo (CapEx por sitio, precio, tarifas…)."""
         bc = config.BUSINESS_CASE
-        if "site_capex_usd" in data and data["site_capex_usd"] is not None:
-            bc["site_capex_usd"] = max(0, float(data["site_capex_usd"]))
+        if "site_capex_mxn" in data and data["site_capex_mxn"] is not None:
+            bc["site_capex_mxn"] = max(0, float(data["site_capex_mxn"]))
         for k in ("price_per_kwh_user", "maintenance_pct", "platform_pct",
                   "bank_commission_pct", "landlord_profit_share", "inflation_pct",
                   "discount_rate_pct", "residual_value_pct", "utilization_year1_pct",
-                  "utilization_ceiling_pct"):
+                  "utilization_ceiling_pct", "avg_kwh_per_charge_session"):
             if k in data and data[k] is not None:
                 bc[k] = float(data[k])
         if "ev_fleet_growth_pct_yoy" in data and data["ev_fleet_growth_pct_yoy"] is not None:
             config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"] = float(data["ev_fleet_growth_pct_yoy"])
-        if "mxn_usd_fx_rate" in data and data["mxn_usd_fx_rate"] is not None:
-            config.ELECTRICITY["mxn_usd_fx_rate"] = max(0.01, float(data["mxn_usd_fx_rate"]))
         ph = data.get("period_hours")
         if ph:
             for k in ("punta", "intermedia", "base"):

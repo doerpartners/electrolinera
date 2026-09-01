@@ -79,7 +79,7 @@ class Engine:
             "current": {"price": bc["price_per_kwh_user"], "service": current_service_pct},
             "site": {"score": a["score"], "verdict": a["verdict"],
                      "metro": a["query"]["metro"],
-                     "electricity": a["business_case"]["local_factors"]["electricity_punta_usd_kwh"]},
+                     "electricity": a["business_case"]["local_factors"]["electricity_punta_mxn_kwh"]},
         }
 
     def obs_in_radius(self, lat, lon, r):
@@ -488,16 +488,21 @@ class Engine:
                     lo += step
                 la += step
 
-        # Puntuar y deduplicar por cercanía
+        # Puntuar, filtrar por riesgo de tráfico y deduplicar por cercanía
+        MIN_FAST_CHARGERS = 2  # riesgo de tráfico muy alto sin al menos esta cantidad de carga rápida cercana
         scored = []
         for c in cands:
             a = self.analyze_point(c["lat"], c["lon"])
+            fast_chargers = a["chargers"]["fast"]
+            if fast_chargers < MIN_FAST_CHARGERS:
+                continue
             scored.append({**c, "score": a["score"], "verdict": a["verdict"],
                            "recommended_sites": a["recommended_sites"],
                            "chargers": a["business_case"]["chargers"],
                            "metro": a["query"]["metro"],
                            "ev_est": a["estimation"]["ev_est"],
                            "public_chargers": a["chargers"]["public"],
+                           "fast_chargers": fast_chargers,
                            "subscores": a["subscores"],
                            "capex": a["business_case"]["capex_total"],
                            "payback_years": a["business_case"]["payback_years"],
@@ -512,6 +517,89 @@ class Engine:
             if len(deduped) >= top_n:
                 break
         return deduped
+
+    def _circle_overlap_fraction(self, lat1, lon1, r1, lat2, lon2, r2):
+        """Fracción del círculo 1 (radio r1, km) cubierta por el círculo 2 (radio r2) — área de
+        intersección de círculos ("lente") dividida entre el área del círculo 1. Aproximación:
+        asume densidad de EVs uniforme dentro del radio de movilidad, el mismo supuesto que ya
+        usa el resto del modelo de demanda (ver VEHICLE_MODEL.cars_per_km2_urban)."""
+        if r1 <= 0:
+            return 0.0
+        d = haversine_km(lat1, lon1, lat2, lon2)
+        if d >= r1 + r2:
+            overlap_area = 0.0
+        elif d <= abs(r1 - r2):
+            overlap_area = math.pi * min(r1, r2) ** 2
+        else:
+            d = max(d, 1e-9)
+            a1 = math.acos(max(-1.0, min(1.0, (d ** 2 + r1 ** 2 - r2 ** 2) / (2 * d * r1))))
+            a2 = math.acos(max(-1.0, min(1.0, (d ** 2 + r2 ** 2 - r1 ** 2) / (2 * d * r2))))
+            term = (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2)
+            overlap_area = r1 ** 2 * a1 + r2 ** 2 * a2 - 0.5 * math.sqrt(max(0.0, term))
+        return min(1.0, overlap_area / (math.pi * r1 ** 2))
+
+    def prioritize_portfolio(self, metro=None, pool_size=30):
+        """Prioriza candidatos considerando canibalización de demanda entre sitios cercanos:
+        si dos ubicaciones comparten el mismo pool de EVs (sus radios de movilidad se
+        traslapan), abrir la segunda no captura demanda "fresca" completa como si estuviera
+        sola. Selección voraz: recorre los candidatos en orden de score independiente
+        (`generate_candidates`) y, a cada uno, le descuenta la fracción de su propio radio ya
+        cubierta por los sitios previamente marcados como viables (aproximación geométrica de
+        traslape de círculos — no una unión geométrica exacta si hay 3+ traslapes, documentado
+        como simplificación). Con la demanda ya descontada, recalcula el sub-score de demanda,
+        el score total y el business case (payback/verdict) de ese candidato.
+
+        No oculta candidatos que dejan de ser buen negocio tras el descuento — los devuelve
+        igual, marcados `portfolio_viable: False`, para que se vea explícitamente dónde deja
+        de convenir seguir abriendo sitios en el mismo mercado (a pedido explícito del
+        cliente: "que te diga hasta cuál el negocio ya no es bueno")."""
+        pool = self.generate_candidates(metro, top_n=pool_size)
+        if not pool:
+            return []
+
+        enriched = []
+        for c in pool:
+            a = self.analyze_point(c["lat"], c["lon"])
+            veh = a["estimation"]
+            demand_basis = veh["ev_est"] + (veh.get("parking_ev_potential") or 0)
+            enriched.append({**c, "radius_km": a["query"]["radius_km"],
+                             "demand_basis_standalone": demand_basis,
+                             "ctx": {"metro": a["query"]["metro"], "ses_index": a["ses_proxy"], "cp": None}})
+
+        REF_EVS = config.SATURATION_EVS
+        W = config.WEIGHTS
+        opened = []   # sitios ya marcados viables — reducen el pool de demanda de los siguientes
+        results = []
+        for i, cand in enumerate(enriched):
+            claimed = min(1.0, sum(
+                self._circle_overlap_fraction(cand["lat"], cand["lon"], cand["radius_km"],
+                                              prev["lat"], prev["lon"], prev["radius_km"])
+                for prev in opened))
+            demand_basis_adj = cand["demand_basis_standalone"] * (1 - claimed)
+            demand_score_adj = min(100, 100 * math.log1p(demand_basis_adj) / math.log1p(REF_EVS))
+            sub_adj = {**cand["subscores"], "demand": demand_score_adj}
+            score_adj = round(sum(sub_adj[k] * W[k] for k in W), 1)
+            verdict_adj, _ = self._verdict(score_adj)
+
+            biz_adj = business.compute(cand["recommended_sites"],
+                                       {**cand["ctx"], "util": score_adj / 100.0})
+            viable = verdict_adj != "BAJA" and biz_adj["payback_years"] is not None
+
+            cand_out = {k: v for k, v in cand.items() if k not in ("ctx", "demand_basis_standalone")}
+            cand_out.update({
+                "priority_rank": i + 1,
+                "demand_claimed_pct": round(claimed * 100, 1),
+                "portfolio_score": score_adj,
+                "portfolio_verdict": verdict_adj,
+                "portfolio_capex": biz_adj["capex_total"],
+                "portfolio_payback_years": biz_adj["payback_years"],
+                "portfolio_break_even_months": biz_adj["break_even_months"],
+                "portfolio_viable": viable,
+            })
+            results.append(cand_out)
+            if viable:
+                opened.append(cand)
+        return results
 
     # ---------- textos / bandas ----------
     def _verdict(self, total):
@@ -598,12 +686,15 @@ class Engine:
             f"real de CFE para la división \"{lf['electricity_division']}\" ({lf['electricity_confidence']}"
             f"{', fuente ' + lf['electricity_source'] if lf['electricity_source'] else ''}"
             f"{', ' + lf['electricity_as_of'] if lf['electricity_as_of'] else ''}): "
-            f"{lf['electricity_punta_usd_kwh']} USD/kWh en punta, {lf['electricity_intermedia_usd_kwh']} en "
-            f"intermedia y {lf['electricity_base_usd_kwh']} en base, más un cargo por demanda de "
-            f"{lf['electricity_demand_usd_kw_month']} USD/kW/mes (capacidad contratada de {biz['chargers'] * 60}kW) — "
+            f"{lf['electricity_punta_mxn_kwh']} MXN/kWh en punta, {lf['electricity_intermedia_mxn_kwh']} en "
+            f"intermedia y {lf['electricity_base_mxn_kwh']} en base, más un cargo por demanda de "
+            f"{lf['electricity_demand_mxn_kw_month']} MXN/kW/mes (capacidad contratada de {biz['chargers'] * 60}kW) — "
             f"este cargo por demanda suele ser el componente más grande del costo eléctrico de un set de "
-            f"{biz['chargers']} cargadores, no solo el consumo por kWh. Para el resto del caso de negocio se asume una "
-            f"inversión de ${biz['capex_total']:,} USD, una tasa de descuento del "
+            f"{biz['chargers']} cargadores, no solo el consumo por kWh. El caso de negocio ancla su energía "
+            f"diaria proyectada a ~{biz['estimated_daily_charging_cars']} coches cargando por día en año 1 "
+            f"(asumiendo {lf['avg_kwh_per_charge_session']}kWh promedio por sesión de carga), en vez de solo "
+            f"un ingreso por kWh. Para el resto del caso de negocio se asume una "
+            f"inversión de ${biz['capex_total']:,} MXN, una tasa de descuento del "
             f"{round(biz['discount_rate_pct'] * 100)}% para el NPV, inflación anual del "
             f"{round(lf['inflation_pct'] * 100, 1)}% y un valor residual del "
             f"{round(bc['residual_value_pct'] * 100)}% del CapEx al año 9 — supuestos genéricos a nivel "
