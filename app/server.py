@@ -6,11 +6,15 @@ Endpoints:
   GET  /api/health
   GET  /api/meta
   GET  /api/insights
-  GET  /api/analyze?lat=..&lon=..     "¿aquí es buena ubicación?" (radio auto: urbano/rural)
-  POST /api/analyze   {lat, lon}
+  GET  /api/analyze?lat=..&lon=..&case=full|partial   "¿aquí es buena ubicación?" (radio auto: urbano/rural)
+  POST /api/analyze   {lat, lon, case}
   GET  /api/candidates?metro=Monterrey&top=15   sugerencias de instalación
   GET  /api/chargers?metro=Monterrey            cargadores para el mapa
-  GET  /api/export/business-case?lat=..&lon=..  descarga el business case completo (.xlsx)
+  GET  /api/export/business-case?lat=..&lon=..&case=full|partial  descarga el business case (.xlsx)
+
+  case=full (default): 1 set de 6 cargadores, OpEx completo (contrato CFE + renta al predio).
+  case=partial: 4 cargadores, sin contrato de demanda CFE ni renta — ver
+  config.BUSINESS_CASE_PARTIAL_OVERRIDES.
   GET  /                                          frontend (web/index.html)
 """
 import json, os, threading
@@ -54,6 +58,9 @@ class Handler(BaseHTTPRequestHandler):
     def _err(self, code, msg):
         self._send(code, {"error": msg})
 
+    def _case(self, raw):
+        return raw if raw in ("full", "partial") else "full"
+
     def log_message(self, fmt, *args):
         pass  # silencio
 
@@ -82,7 +89,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/demand":
                 return self._send(200, engine().demand)
             if path == "/api/business-config":
-                return self._send(200, {**config.BUSINESS_CASE,
+                case = self._case(q.get("case", [None])[0])
+                bc = {**config.BUSINESS_CASE,
+                      **(config.BUSINESS_CASE_PARTIAL_OVERRIDES if case == "partial" else {})}
+                return self._send(200, {**bc, "case": case,
                                         "ev_fleet_growth_pct_yoy": config.VEHICLE_MODEL["ev_fleet_growth_pct_yoy"],
                                         "mxn_usd_fx_rate": config.ELECTRICITY["mxn_usd_fx_rate"],
                                         "period_hours": config.ELECTRICITY["period_hours"]})
@@ -101,13 +111,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._handle_analyze(
                     float(q["lat"][0]), float(q["lon"][0]),
                     float(radius) if radius is not None else None,
-                    q.get("cp", [None])[0])
+                    q.get("cp", [None])[0], self._case(q.get("case", [None])[0]))
             if path == "/api/sensitivity":
                 radius = q.get("radius", [None])[0]
                 return self._send(200, engine().sensitivity(
                     float(q["lat"][0]), float(q["lon"][0]),
                     float(radius) if radius is not None else None,
-                    q.get("cp", [None])[0]))
+                    q.get("cp", [None])[0], case=self._case(q.get("case", [None])[0])))
             if path == "/api/candidates":
                 metro = q.get("metro", [None])[0]
                 top = int(q.get("top", [15])[0])
@@ -119,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._handle_export_business_case(
                     float(q["lat"][0]), float(q["lon"][0]),
                     float(radius) if radius is not None else None,
-                    q.get("cp", [None])[0])
+                    q.get("cp", [None])[0], self._case(q.get("case", [None])[0]))
             # estáticos
             return self._serve_static(path)
         except (KeyError, ValueError) as e:
@@ -136,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
                 radius = data.get("radius")
                 return self._handle_analyze(float(data["lat"]), float(data["lon"]),
                                             float(radius) if radius is not None else None,
-                                            data.get("cp"))
+                                            data.get("cp"), self._case(data.get("case")))
             if u.path == "/api/business":
                 return self._handle_business(data)
             if u.path == "/api/weights":
@@ -192,19 +202,19 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(200, {"weights": config.WEIGHTS})
 
     # ---------- handlers ----------
-    def _handle_analyze(self, lat, lon, radius, cp=None):
+    def _handle_analyze(self, lat, lon, radius, cp=None, case="full"):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return self._err(400, "lat/lon fuera de rango")
         if radius is not None:
             radius = max(0.5, min(radius, 25))  # override explícito (ej. pruebas); si no se manda, se autocalcula
-        return self._send(200, engine().analyze_point(lat, lon, radius, cp))
+        return self._send(200, engine().analyze_point(lat, lon, radius, cp, case))
 
-    def _handle_export_business_case(self, lat, lon, radius, cp=None):
+    def _handle_export_business_case(self, lat, lon, radius, cp=None, case="full"):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             return self._err(400, "lat/lon fuera de rango")
         if radius is not None:
             radius = max(0.5, min(radius, 25))
-        a = engine().analyze_point(lat, lon, radius, cp)
+        a = engine().analyze_point(lat, lon, radius, cp, case)
         xlsx_bytes = export_xlsx.build_business_case_xlsx(a)
         fname = f"business_case_{lat:.4f}_{lon:.4f}.xlsx".replace("-", "m")
         return self._send(200, xlsx_bytes,

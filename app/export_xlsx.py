@@ -108,7 +108,9 @@ def _sheet_resumen(ws, a):
         row += 1
 
     row += 1
-    ws.cell(row=row, column=1, value="Business case — resumen (1 set de 6 cargadores)").font = SECTION_FONT
+    case_lbl = "parcial" if biz.get("case") == "partial" else "completo"
+    ws.cell(row=row, column=1,
+            value=f"Business case — resumen ({case_lbl}, 1 set de {biz['chargers']} cargadores)").font = SECTION_FONT
     row += 1
     row = _kv(ws, row, "CapEx total", biz["capex_total"], USD)
     row = _kv(ws, row, "Cargadores", biz["chargers"])
@@ -137,9 +139,10 @@ def _sheet_flujo(ws, a):
     biz = a["business_case"]
     years = biz["years"]
     opex_keys = list(years[0]["opex_breakdown"].keys())
+    landlord_pct = round(biz["local_factors"]["landlord_profit_share"] * 100)
     headers = (["Año", "Utilización", "Horas activo/cargador/día", "Ingreso"]
                + [OPEX_LABELS.get(k, k) for k in opex_keys]
-               + ["OpEx total", "Utilidad bruta", "Utilidad local (16%)", "Utilidad inversionista",
+               + ["OpEx total", "Utilidad bruta", f"Utilidad local ({landlord_pct}%)", "Utilidad inversionista",
                   "Valor residual", "Utilidad acumulada inversionista"])
     row = _header_row(ws, 1, headers)
     for y in years:
@@ -159,7 +162,7 @@ def _sheet_flujo(ws, a):
         ws.cell(row=row, column=col, value=y["cumulative_investor_profit"]).number_format = USD; col += 1
         row += 1
     ws.cell(row=row + 1, column=1,
-            value="Horas activo/cargador/día = utilización × 24h (reparto uniforme entre los 6 cargadores).").font = ITALIC_MUTED
+            value=f"Horas activo/cargador/día = utilización × 24h (reparto uniforme entre los {biz['chargers']} cargadores).").font = ITALIC_MUTED
     _autosize(ws, [6, 11, 14, 13] + [16] * len(opex_keys) + [13, 14, 14, 16, 13, 18])
 
 
