@@ -217,11 +217,11 @@ function bar(lbl, v){
   return `<div class="bar"><span class="lbl">${lbl}</span><span class="track"><span class="fill" style="width:${v}%"></span></span><span class="val">${Math.round(v)}</span></div>`;
 }
 function stat(n,k){ return `<div class="stat"><div class="n">${n}</div><div class="k">${k}</div></div>`; }
-const usd = n => '$'+(n>=1e6 ? (n/1e6).toFixed(2)+'M' : Math.round(n).toLocaleString());
+const mxn = n => '$'+(n>=1e6 ? (n/1e6).toFixed(2)+'M' : Math.round(n).toLocaleString());
 const OPEX_LBL={electricidad_energia:'Electricidad (energía)',electricidad_demanda:'Electricidad (demanda contratada)',electricidad_cargo_fijo:'Electricidad (cargo fijo)',electricidad_dap:'Electricidad (DAP)',comision_bancaria:'Comisión bancaria',mantenimiento:'Mantenimiento',plataforma_software:'Plataforma (software)',servicio:'Servicio (agregado)'};
 function costRows(bd, labels, total){
   return Object.entries(bd).sort((a,b)=>b[1]-a[1]).map(([k,v])=>
-    `<div class="hbar"><div class="top"><span>${labels[k]||k}</span><span>${usd(v)}</span></div>
+    `<div class="hbar"><div class="top"><span>${labels[k]||k}</span><span>${mxn(v)}</span></div>
      <div class="track"><div class="fill" style="width:${Math.max(2,100*v/total)}%"></div></div></div>`).join('');
 }
 function yearBars(years){
@@ -229,7 +229,7 @@ function yearBars(years){
   return years.map(y=>{
     const neg = y.cumulative_investor_profit < 0;
     const w = Math.max(2, 100*Math.abs(y.cumulative_investor_profit)/maxAbs);
-    return `<div class="hbar"><div class="top"><span>Año ${y.year}</span><span>${usd(y.cumulative_investor_profit)}</span></div>
+    return `<div class="hbar"><div class="top"><span>Año ${y.year}</span><span>${mxn(y.cumulative_investor_profit)}</span></div>
      <div class="track"><div class="fill" style="width:${w}%;background:${neg?'var(--low)':'var(--acc)'}"></div></div></div>`;
   }).join('');
 }
@@ -254,30 +254,30 @@ function businessHtml(b){
        href="${exportUrl}">📥 Exportar business case ${caseLbl} (Excel)</a>
     <div class="bekpi" style="border-color:${beCol}">
       <div class="bev" style="color:${beCol}">${be}</div>
-      <div class="bel">Punto de equilibrio<br><span>recuperar CapEx de ${usd(b.capex_total)}</span></div>
+      <div class="bel">Punto de equilibrio<br><span>recuperar CapEx de ${mxn(b.capex_total)}</span></div>
     </div>
-    <div class="disc" style="margin-top:2px">Margen de contribución ${b.contribution_margin_per_kwh} USD/kWh
+    <div class="disc" style="margin-top:2px">Margen de contribución ${b.contribution_margin_per_kwh} MXN/kWh
       (servicio ${b.service_cost_per_kwh}/kWh) · reparto utilidad: ${landlordPct}% local / ${100-landlordPct}% inversionista.</div>
     <div class="grid2">
-      ${stat(usd(b.capex_total),'CapEx (inversión)')}
+      ${stat(mxn(b.capex_total),'CapEx (inversión)')}
       ${stat(pay,'Payback')}
-      ${stat(usd(b.revenue_annual)+'/a','Ingreso año 1')}
-      ${stat(usd(y9.revenue)+'/a','Ingreso año 9 (meseta)')}
-      ${stat(usd(b.gross_profit_annual)+'/a','Utilidad año 1')}
+      ${stat(mxn(b.revenue_annual)+'/a','Ingreso año 1')}
+      ${stat(mxn(y9.revenue)+'/a','Ingreso año 9 (meseta)')}
+      ${stat(mxn(b.gross_profit_annual)+'/a','Utilidad año 1')}
       ${stat(roiPct,'ROI '+b.roi_horizon_years+' años')}
-      ${stat(usd(b.npv),'NPV @ '+(b.discount_rate_pct*100).toFixed(0)+'%')}
-      ${stat(usd(b.residual_value),'Valor residual (año 9)')}
+      ${stat(mxn(b.npv),'NPV @ '+(b.discount_rate_pct*100).toFixed(0)+'%')}
+      ${stat(mxn(b.residual_value),'Valor residual (año 9)')}
     </div>
-    <div class="disc">Electricidad (${lf.electricity_division} · ${lf.electricity_confidence}): punta ${lf.electricity_punta_usd_kwh} ·
-      intermedia ${lf.electricity_intermedia_usd_kwh} · base ${lf.electricity_base_usd_kwh} USD/kWh + demanda
-      ${lf.electricity_demand_usd_kw_month} USD/kW/mes · precio al usuario ${lf.price_per_kwh_user} USD/kWh ·
+    <div class="disc">Electricidad (${lf.electricity_division} · ${lf.electricity_confidence}): punta ${lf.electricity_punta_mxn_kwh} ·
+      intermedia ${lf.electricity_intermedia_mxn_kwh} · base ${lf.electricity_base_mxn_kwh} MXN/kWh + demanda
+      ${lf.electricity_demand_mxn_kw_month} MXN/kW/mes · precio al usuario ${lf.price_per_kwh_user} MXN/kWh ·
       utilización efectiva ${(lf.utilization*100).toFixed(0)}%
       ${lf.inflation_pct?(' · inflación '+(lf.inflation_pct*100).toFixed(1)+'%/a'):''}
       · crecimiento parque EV+PHEV ${(lf.ev_fleet_growth_pct_yoy*100).toFixed(1)}%/a</div>
     <details class="costs"><summary>Desglose OpEx (año 1)</summary>${costRows(b.opex_breakdown,OPEX_LBL,b.opex_annual)}</details>
     <details class="costs"><summary>Utilidad acumulada del inversionista (9 años, incl. valor residual)</summary>${yearBars(b.years)}</details>
     <details class="costs"><summary>🤝 Esquema de comisiones (pago único, informativo)</summary>
-      <div class="disc">VIP ${usd(com.vip_usd)} (5% del CapEx) · Vendedor ${usd(com.vendedor_usd)} · Arquitecto ${usd(com.arquitecto_usd)}.
+      <div class="disc">VIP ${mxn(com.vip_mxn)} (5% del CapEx) · Vendedor ${mxn(com.vendedor_mxn)} · Arquitecto ${mxn(com.arquitecto_mxn)}.
       Se pagan al implementar el sitio; no se restan del ROI del inversionista mostrado arriba.<br>${com.recurring_note}</div></details>
     <details class="costs" id="sensWrap"><summary>📊 Sensibilidad: equilibrio × precio × costo de servicio</summary>
       <div id="sensBox"><div class="empty">Abriendo…</div></div></details>`;
@@ -311,7 +311,7 @@ async function loadSensitivity(){
       return `<td class="heatc${cur}" style="background:${beColorMonths(v)}" title="precio ${p} · servicio ${(d.services[j]*100).toFixed(0)}%: ${label} meses">${label}</td>`;
     }).join('')}</tr>`).join('');
     $('#sensBox').innerHTML=`
-      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (1 set de ${d.chargers} cargadores, caso ${d.case==='partial'?'parcial':'completo'}). Filas = <b>precio de carga</b> (USD/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} USD/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
+      <div class="disc" style="margin:2px 0 6px">Meses para recuperar CapEx (1 set de ${d.chargers} cargadores, caso ${d.case==='partial'?'parcial':'completo'}). Filas = <b>precio de carga</b> (MXN/kWh), columnas = <b>costo de servicio</b> (% de facturación). Electricidad punta ${d.site.electricity} MXN/kWh. Borde blanco = punto actual (precio ${d.current.price}, servicio ${(d.current.service*100).toFixed(0)}%).</div>
       <div style="overflow-x:auto"><table class="heat">${head}${rows}</table></div>
       <div class="heatleg">
         <span><i style="background:${beColorMonths(24)}"></i>≤36m</span>
@@ -369,6 +369,7 @@ function renderAnalysis(a){
       ${stat(ch.fast,'carga rápida')}
       ${stat(ch.tesla,'sitios Tesla')}
       ${stat('~'+est.home_chargers_est.toLocaleString(),'carga en casa (est.)')}
+      ${stat('~'+a.business_case.estimated_daily_charging_cars.toLocaleString(),'coches carga/día (est., año 1)')}
     </div>
     ${fieldHtml}
     ${businessHtml(a.business_case)}
@@ -387,23 +388,37 @@ function showRationale(text){
 /* ---------- candidatos ---------- */
 async function loadCandidates(){
   const metro=$('#metro').value;
+  const portfolio=$('#cbPortfolio')?.checked;
   $('#candlist').innerHTML='<div class="empty">Generando candidatos para '+metro+'…</div>';
   candLayer.clearLayers();
   try{
-    const d=await (await fetch(API+`/api/candidates?metro=${encodeURIComponent(metro)}&top=15`)).json();
+    const url = portfolio
+      ? API+`/api/candidates/portfolio?metro=${encodeURIComponent(metro)}&pool=30`
+      : API+`/api/candidates?metro=${encodeURIComponent(metro)}&top=15`;
+    const d=await (await fetch(url)).json();
     const rows=d.candidates.map((c,i)=>{
-      const col=COLOR[c.verdict]||'#888';
+      const verdict = portfolio ? c.portfolio_verdict : c.verdict;
+      const score = portfolio ? c.portfolio_score : c.score;
+      const payback = portfolio ? c.portfolio_break_even_months : c.break_even_months;
+      const capex = portfolio ? c.portfolio_capex : c.capex;
+      const col = portfolio && !c.portfolio_viable ? '#555' : (COLOR[verdict]||'#888');
       const icon=L.divIcon({html:`<div class="marker-num" style="background:${col}">${i+1}</div>`,className:'',iconSize:[26,26],iconAnchor:[13,13]});
       L.marker([c.lat,c.lon],{icon}).addTo(candLayer)
-        .bindPopup(`<b>#${i+1} ${c.label}</b><br>Score ${c.score} · ${c.verdict}<br>Instalar 1 set de ${c.chargers} cargadores<br><i>${c.reason}</i>`);
-      return `<div class="candrow" data-lat="${c.lat}" data-lon="${c.lon}">
+        .bindPopup(`<b>#${i+1} ${c.label}</b><br>Score ${score} · ${verdict}<br>Instalar 1 set de ${c.chargers} cargadores<br><i>${c.reason}</i>`
+          + (portfolio ? `<br>Demanda ya reclamada por sitios previos: ${c.demand_claimed_pct}%` : ''));
+      const portfolioSub = portfolio
+        ? ` · reclamado ${c.demand_claimed_pct}%${c.portfolio_viable?'':' · <b style="color:#f4795b">ya no conviene</b>'}`
+        : '';
+      return `<div class="candrow${portfolio && !c.portfolio_viable ? ' notviable' : ''}" data-lat="${c.lat}" data-lon="${c.lon}">
         <div class="rank" style="background:${col}">${i+1}</div>
         <div class="cinfo"><div class="cname">${c.label}</div>
-        <div class="csub"><span class="kind">${c.kind}</span> · 1 set de ${c.chargers} cargadores · ${usd(c.capex)} · equilibrio ${c.break_even_months!=null?c.break_even_months+'m':'n/d'}</div></div>
-        <div class="cscore" style="color:${col}">${c.score}</div></div>`;
+        <div class="csub"><span class="kind">${c.kind}</span> · 1 set de ${c.chargers} cargadores · ${mxn(capex)} · equilibrio ${payback!=null?payback+'m':'n/d'}${portfolioSub}</div></div>
+        <div class="cscore" style="color:${col}">${score}</div></div>`;
     }).join('');
-    $('#candlist').innerHTML=`<div class="section-t">Top candidatos · ${metro}</div>${rows}
-      <div class="disc">Clic en un renglón para volar al punto y evaluarlo.</div>`;
+    const note = portfolio
+      ? `<div class="disc">Modo portafolio: cada candidato descuenta la demanda ya "reclamada" por los candidatos de mayor prioridad cuyos radios se traslapan (aproximación geométrica, densidad de EV uniforme). Marcados en gris/"ya no conviene" son sitios donde, dado el resto del portafolio ya priorizado, dejó de ser buen negocio abrir uno más.</div>`
+      : `<div class="disc">Clic en un renglón para volar al punto y evaluarlo. Excluye sitios con &lt;2 cargadores rápidos cercanos (riesgo de tráfico muy alto).</div>`;
+    $('#candlist').innerHTML=`<div class="section-t">Top candidatos · ${metro}${portfolio?' (portafolio)':''}</div>${rows}${note}`;
     document.querySelectorAll('.candrow').forEach(r=>r.addEventListener('click',()=>{
       const la=parseFloat(r.dataset.lat),lo=parseFloat(r.dataset.lon);
       map.setView([la,lo],14); switchTab('explorar'); evaluate(la,lo);
@@ -512,12 +527,12 @@ async function loadAjustes(){
   bizDiv.innerHTML=`
     <h3 class="s">💰 Business case (supuestos, 1 set de ${bc.chargers_per_site} cargadores)</h3>
     <div class="form">
-      <label style="font-size:11px;color:var(--mut)">CapEx del set (USD, ${bc.chargers_per_site} cargadores)
-        <input id="b-capex" type="number" value="${bc.site_capex_usd}"></label>
-      <label style="font-size:11px;color:var(--mut)">Precio de carga al usuario (USD/kWh)
+      <label style="font-size:11px;color:var(--mut)">CapEx del set (MXN, ${bc.chargers_per_site} cargadores)
+        <input id="b-capex" type="number" value="${bc.site_capex_mxn}"></label>
+      <label style="font-size:11px;color:var(--mut)">Precio de carga al usuario (MXN/kWh)
         <input id="b-price" type="number" step="0.01" value="${bc.price_per_kwh_user}"></label>
-      <label style="font-size:11px;color:var(--mut)">Tipo de cambio MXN/USD (tarifas CFE reales)
-        <input id="b-fx" type="number" step="0.1" value="${bc.mxn_usd_fx_rate}"></label>
+      <label style="font-size:11px;color:var(--mut)">kWh promedio por sesión de carga (ancla coches/día)
+        <input id="b-kwhsession" type="number" step="1" value="${bc.avg_kwh_per_charge_session}"></label>
       <label style="font-size:11px;color:var(--mut)">Horas punta / intermedia / base (24h, GDMTH — aproximado)
         <span style="display:flex;gap:6px">
           <input id="b-hpunta" type="number" step="0.5" value="${bc.period_hours.punta}" style="margin-bottom:0">
@@ -544,7 +559,7 @@ async function loadAjustes(){
     <button id="bApply" class="primary block">Aplicar supuestos</button>
     <div id="bMsg" class="disc"></div>
     <div class="note">Modelo fijo: 1 set de 6 cargadores (360kW, 6 autos simultáneos), 9 años — no se
-      proponen sets adicionales. CapEx de partida <b>USD $250k</b>. La utilización parte de
+      proponen sets adicionales. CapEx de partida <b>$4.6M MXN</b>. La utilización parte de
       ${(bc.utilization_year1_pct*100).toFixed(0)}% y crece al ritmo del parque EV+PHEV hasta un tope
       de ${(bc.utilization_ceiling_pct*100).toFixed(0)}%. Mantenimiento (10%) y plataforma (13%) escalan
       con la facturación. La tarifa eléctrica (punta/intermedia/base + cargo por demanda) es la real de
@@ -555,9 +570,9 @@ async function loadAjustes(){
   $('#bApply').addEventListener('click', applyBusiness);
 }
 async function applyBusiness(){
-  const body={site_capex_usd:parseFloat($('#b-capex').value),
+  const body={site_capex_mxn:parseFloat($('#b-capex').value),
     price_per_kwh_user:parseFloat($('#b-price').value),
-    mxn_usd_fx_rate:parseFloat($('#b-fx').value),
+    avg_kwh_per_charge_session:parseFloat($('#b-kwhsession').value),
     period_hours:{punta:parseFloat($('#b-hpunta').value), intermedia:parseFloat($('#b-hinter').value),
                   base:parseFloat($('#b-hbase').value)},
     landlord_profit_share:parseFloat($('#b-landlord').value)/100,

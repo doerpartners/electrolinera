@@ -89,11 +89,15 @@ VEHICLE_MODEL = {
 # --- Business case: costos, ingresos y payback (todo tunable) ---
 # Siempre 1 set de 6 cargadores (360kW ≈ 6 × 60kW, 6 autos cargando simultáneamente),
 # a 9 años — vida media asumida de un cargador EV. No se proponen sets adicionales.
-# Fuente: modelo de negocios del proveedor (Excel "Modelo de Negocios", 9 años).
+# Fuente: modelo de negocios del proveedor (Excel "Modelo de Negocios", 9 años), originalmente
+# en USD; convertido a MXN (todo el caso de negocio vive en pesos) al tipo de cambio de
+# referencia usado en esa conversión, 18.5 MXN/USD — valor fijo de un solo uso, no un tipo de
+# cambio en vivo (no hay ninguna conversión de moneda en tiempo de ejecución en este módulo).
+_USD_MXN_FX_AT_CONVERSION = 18.5
 BUSINESS_CASE = {
-    "currency": "USD",
+    "currency": "MXN",
     "horizon_years": 9,
-    "site_capex_usd": 250_000,   # transformador + 6 cargadores + cable + instalación, el set completo
+    "site_capex_mxn": round(250_000 * _USD_MXN_FX_AT_CONVERSION),  # transformador + 6 cargadores + cable + instalación, el set completo
     "site_capacity_kw": 360,     # 6 cargadores × ~60kW
     "chargers_per_site": 6,
     # Curva de utilización año 1..9: arranca en utilization_year1_pct y crece cada año
@@ -103,7 +107,8 @@ BUSINESS_CASE = {
     "utilization_year1_pct": 0.23,
     "utilization_ceiling_pct": 0.40,
     "util_floor": 0.30,   # piso: multiplica la curva de arriba según el score del sitio (no viene del Excel)
-    "price_per_kwh_user": 0.46,               # mismo precio en los 3 periodos (así viene calculado en la fuente)
+    "price_per_kwh_user": round(0.46 * _USD_MXN_FX_AT_CONVERSION, 2),  # mismo precio en los 3 periodos (así viene calculado en la fuente)
+    "avg_kwh_per_charge_session": 30,          # kWh promedio por sesión de carga — ancla la energía diaria del sitio a un número de "coches cargando al día" (supuesto explícito del cliente, no viene del Excel)
     "electrical_loss_ratio": 0.10,             # pérdida eléctrica aplicada al costo de energía
     "bank_commission_pct": 0.0,                # comisión bancaria/pasarela de pago, % de facturación (sin costo en la fuente)
     "maintenance_pct": 0.10,                   # % de facturación
@@ -116,8 +121,8 @@ BUSINESS_CASE = {
     # (en la fuente tampoco están conectadas a la hoja de ROI).
     "commissions": {
         "vip_pct_of_capex": 0.05,
-        "vendedor_flat_usd": 2_500,
-        "arquitecto_flat_usd": 2_500,
+        "vendedor_flat_mxn": round(2_500 * _USD_MXN_FX_AT_CONVERSION),
+        "arquitecto_flat_mxn": round(2_500 * _USD_MXN_FX_AT_CONVERSION),
         "recurring_note": ("Comisión recurrente mensual (0.5% VIP + 0.5% vendedor) solo aplica a "
                             "clientes con cartera de 100+ sitios; no se calcula por sitio individual."),
     },
@@ -135,7 +140,7 @@ BUSINESS_CASE = {
 BUSINESS_CASE_PARTIAL_OVERRIDES = {
     "chargers_per_site": 4,
     "site_capacity_kw": 240,                          # 4 × 60kW
-    "site_capex_usd": round(250_000 * 4 / 6),         # escalado proporcional a cargadores (placeholder)
+    "site_capex_mxn": round(BUSINESS_CASE["site_capex_mxn"] * 4 / 6),  # escalado proporcional a cargadores (placeholder)
     "opex_multiplier": 0.25,                          # placeholder: sin contrato CFE ni renta -> ~25% del OpEx completo
     "landlord_profit_share": 0.0,                     # sin renta al predio: 100% para el inversionista
 }
@@ -144,7 +149,7 @@ BUSINESS_CASE_PARTIAL_OVERRIDES = {
 # Horaria) para consumo comercial/industrial. Reemplaza el supuesto plano anterior.
 # CP -> municipio (data/processed/cp_municipio.json, catálogo SEPOMEX) -> división CFE -> tarifa.
 # Fuente de las 6 divisiones abajo: DOF, "Tarifas finales del Suministro Básico" (boletines
-# 2025-11-28 y 2026-07-31). Cifras en MXN; se convierten a USD con mxn_usd_fx_rate en electricity.py.
+# 2025-11-28 y 2026-07-31). Cifras en MXN, usadas tal cual (todo el caso de negocio es en pesos).
 # El catálogo SEPOMEX registra el municipio de CDMX como la alcaldía (no "Ciudad de México"),
 # de ahí las 16 claves explícitas abajo — todas caen en la misma división/DAP (aproximación
 # documentada; CDMX tiene 3 sub-divisiones reales, ver nota más abajo).
@@ -155,7 +160,6 @@ _CDMX_ALCALDIAS = ["Álvaro Obregón", "Azcapotzalco", "Benito Juárez", "Coyoac
 _CDMX_KEYS = [f"{a}|Ciudad de México" for a in _CDMX_ALCALDIAS]
 
 ELECTRICITY = {
-    "mxn_usd_fx_rate": 18.5,  # aproximado — actualizar con el tipo de cambio Banxico vigente
     # ⚠️ Ventanas horarias sin confirmar con el anexo metodológico CRE/CNE (no está en los
     # boletines de tarifas) — split genérico ampliamente citado (punta 18-22h, base 00-06h).
     # Tunable; reemplazar si se consigue el anexo real por división/temporada.

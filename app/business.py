@@ -39,6 +39,15 @@ Extensiones agregadas sobre la fuente (no vienen del Excel):
    + cargo fijo + DAP municipal) según el código postal del sitio. Incluye el cargo
    por demanda ($/kW de capacidad contratada, ~360kW) — un costo real de GDMTH que el
    modelo anterior no consideraba y que puede ser el componente más grande del OpEx.
+ - `estimated_daily_charging_cars` por año: la energía diaria que el sitio dispensa
+   (capacidad × utilización × 24h) dividida entre `avg_kwh_per_charge_session` (30kWh
+   por default) — ancla el caso de negocio a un número de "coches cargando al día" en
+   vez de solo revenue/kWh, a pedido explícito del cliente (más fácil de contrastar
+   contra la inversión que un total de EVs en el radio).
+
+Todo el caso de negocio vive en MXN (pesos) — ver app/config.py -> BUSINESS_CASE para la nota
+sobre el tipo de cambio de un solo uso con el que se convirtieron las cifras originales en USD
+de la fuente. No hay ninguna conversión de moneda en tiempo de ejecución en este módulo.
 """
 from . import config, electricity
 
@@ -46,9 +55,9 @@ from . import config, electricity
 def _commissions(capex_total, sites):
     c = config.BUSINESS_CASE["commissions"]
     return {
-        "vip_usd": round(capex_total * c["vip_pct_of_capex"]),
-        "vendedor_usd": round(c["vendedor_flat_usd"] * sites),
-        "arquitecto_usd": round(c["arquitecto_flat_usd"] * sites),
+        "vip_mxn": round(capex_total * c["vip_pct_of_capex"]),
+        "vendedor_mxn": round(c["vendedor_flat_mxn"] * sites),
+        "arquitecto_mxn": round(c["arquitecto_flat_mxn"] * sites),
         "recurring_note": c["recurring_note"],
     }
 
@@ -62,7 +71,7 @@ def compute(sites, ctx, case="full"):
     opex_multiplier = bc.get("opex_multiplier", 1.0)
     sites = max(1, int(sites))
 
-    capex_total = sites * bc["site_capex_usd"]
+    capex_total = sites * bc["site_capex_mxn"]
     capacity = bc["site_capacity_kw"]
     ph = config.ELECTRICITY["period_hours"]
     punta_h, intermedia_h, base_h = ph["punta"], ph["intermedia"], ph["base"]
@@ -75,11 +84,11 @@ def compute(sites, ctx, case="full"):
 
     elec = ctx.get("electricity") or electricity.resolve(ctx.get("cp"))
     loss = 1 + bc["electrical_loss_ratio"]
-    punta0 = elec["punta_usd_kwh"] * loss
-    intermedia0 = elec["intermedia_usd_kwh"] * loss
-    base0 = elec["base_usd_kwh"] * loss
-    demand0 = elec["demand_usd_kw_month"] * capacity * 12 * sites  # cargo por capacidad contratada
-    fixed0 = elec["fixed_usd_month"] * 12 * sites
+    punta0 = elec["punta_mxn_kwh"] * loss
+    intermedia0 = elec["intermedia_mxn_kwh"] * loss
+    base0 = elec["base_mxn_kwh"] * loss
+    demand0 = elec["demand_mxn_kw_month"] * capacity * 12 * sites  # cargo por capacidad contratada
+    fixed0 = elec["fixed_mxn_month"] * 12 * sites
 
     landlord_share = bc["landlord_profit_share"]
     inflation = bc["inflation_pct"]
@@ -93,6 +102,7 @@ def compute(sites, ctx, case="full"):
     utilization_ceiling = bc["utilization_ceiling_pct"]
     utilization_by_year = [min(utilization_ceiling, bc["utilization_year1_pct"] * (1 + ev_growth) ** i)
                             for i in range(bc["horizon_years"])]
+    avg_kwh_per_charge = bc.get("avg_kwh_per_charge_session", 30)
 
     years = []
     cumulative_investor = -capex_total
@@ -109,9 +119,10 @@ def compute(sites, ctx, case="full"):
         kw_base = capacity * utilization * base_h
         kw_total = kw_punta + kw_intermedia + kw_base
         revenue = kw_total * price * 365 * sites
+        estimated_daily_cars = round(kw_total * sites / avg_kwh_per_charge) if avg_kwh_per_charge else None
 
         energy_cost = (kw_punta * punta + kw_intermedia * intermedia + kw_base * base) * 365 * sites
-        dap_cost = electricity.dap_annual_usd(elec["dap"], energy_cost)
+        dap_cost = electricity.dap_annual_mxn(elec["dap"], energy_cost)
 
         if service_pct_override is not None:
             opex_breakdown = {
@@ -146,6 +157,7 @@ def compute(sites, ctx, case="full"):
         years.append({
             "year": i + 1,
             "utilization": round(utilization, 3),
+            "estimated_daily_charging_cars": estimated_daily_cars,
             "revenue": round(revenue),
             "opex": round(opex),
             "opex_breakdown": opex_breakdown,
@@ -191,6 +203,7 @@ def compute(sites, ctx, case="full"):
         "opex_annual": year1["opex"],
         "opex_breakdown": year1["opex_breakdown"],
         "gross_profit_annual": year1["gross_profit"],
+        "estimated_daily_charging_cars": year1["estimated_daily_charging_cars"],
         "payback_years": payback_years,
         "break_even_months": round(payback_years * 12, 1) if payback_years is not None else None,
         "roi_horizon_years": horizon,
@@ -202,10 +215,10 @@ def compute(sites, ctx, case="full"):
         "service_cost_per_kwh": service_cost_per_kwh,
         "commissions": _commissions(capex_total, sites),
         "local_factors": {
-            "electricity_punta_usd_kwh": round(punta0, 4),
-            "electricity_intermedia_usd_kwh": round(intermedia0, 4),
-            "electricity_base_usd_kwh": round(base0, 4),
-            "electricity_demand_usd_kw_month": elec["demand_usd_kw_month"],
+            "electricity_punta_mxn_kwh": round(punta0, 4),
+            "electricity_intermedia_mxn_kwh": round(intermedia0, 4),
+            "electricity_base_mxn_kwh": round(base0, 4),
+            "electricity_demand_mxn_kw_month": elec["demand_mxn_kw_month"],
             "electricity_division": elec["division"],
             "electricity_confidence": elec["confidence"],
             "electricity_source": elec["source"],
@@ -215,5 +228,6 @@ def compute(sites, ctx, case="full"):
             "inflation_pct": inflation,
             "ev_fleet_growth_pct_yoy": ev_growth,
             "landlord_profit_share": landlord_share,
+            "avg_kwh_per_charge_session": avg_kwh_per_charge,
         },
     }
